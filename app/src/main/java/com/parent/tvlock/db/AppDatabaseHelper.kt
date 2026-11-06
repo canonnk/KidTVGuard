@@ -13,7 +13,7 @@ class AppDatabaseHelper private constructor(context: Context) :
 
     companion object {
         const val DATABASE_NAME = "tv_lock.db"
-        const val DATABASE_VERSION = 2
+        const val DATABASE_VERSION = 3
 
         // 表名定义
         const val TABLE_QUESTIONS = "questions"
@@ -45,18 +45,20 @@ class AppDatabaseHelper private constructor(context: Context) :
             CREATE TABLE $TABLE_QUESTIONS (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 subject TEXT NOT NULL,
+                questionType TEXT NOT NULL DEFAULT 'CHOICE',
                 questionText TEXT NOT NULL,
                 questionImageUrl TEXT,
                 localImagePath TEXT,
-                optionA TEXT NOT NULL,
-                optionB TEXT NOT NULL,
-                optionC TEXT NOT NULL,
-                optionD TEXT NOT NULL,
+                optionA TEXT,
+                optionB TEXT,
+                optionC TEXT,
+                optionD TEXT,
                 optionAImageUrl TEXT,
                 optionBImageUrl TEXT,
                 optionCImageUrl TEXT,
                 optionDImageUrl TEXT,
                 correctAnswer TEXT NOT NULL,
+                acceptableAnswers TEXT,
                 explanation TEXT,
                 isAnsweredCorrectly INTEGER NOT NULL DEFAULT 0
             );
@@ -125,6 +127,15 @@ class AppDatabaseHelper private constructor(context: Context) :
                 L.i("Successfully upgraded database to v2 (added option image columns).")
             } catch (e: Exception) {
                 L.e("Failed to upgrade database to v2", tr = e)
+            }
+        }
+        if (oldVersion < 3) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_QUESTIONS ADD COLUMN questionType TEXT NOT NULL DEFAULT 'CHOICE';")
+                db.execSQL("ALTER TABLE $TABLE_QUESTIONS ADD COLUMN acceptableAnswers TEXT;")
+                L.i("Successfully upgraded database to v3 (added questionType and acceptableAnswers).")
+            } catch (e: Exception) {
+                L.e("Failed to upgrade database to v3", tr = e)
             }
         }
     }

@@ -18,18 +18,20 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
         val db = dbHelper.writableDatabase
         val values = ContentValues().apply {
             put("subject", question.subject)
+            put("questionType", (question.questionType ?: Question.TYPE_CHOICE).ifBlank { Question.TYPE_CHOICE })
             put("questionText", question.questionText)
             put("questionImageUrl", question.questionImageUrl)
             put("localImagePath", question.localImagePath)
-            put("optionA", question.optionA)
-            put("optionB", question.optionB)
-            put("optionC", question.optionC)
-            put("optionD", question.optionD)
+            put("optionA", question.optionA ?: "")
+            put("optionB", question.optionB ?: "")
+            put("optionC", question.optionC ?: "")
+            put("optionD", question.optionD ?: "")
             put("optionAImageUrl", question.optionAImageUrl)
             put("optionBImageUrl", question.optionBImageUrl)
             put("optionCImageUrl", question.optionCImageUrl)
             put("optionDImageUrl", question.optionDImageUrl)
             put("correctAnswer", question.correctAnswer)
+            put("acceptableAnswers", question.acceptableAnswers)
             put("explanation", question.explanation)
             put("isAnsweredCorrectly", question.isAnsweredCorrectly)
         }
@@ -47,18 +49,20 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
             for (q in questions) {
                 val values = ContentValues().apply {
                     put("subject", q.subject)
+                    put("questionType", (q.questionType ?: Question.TYPE_CHOICE).ifBlank { Question.TYPE_CHOICE })
                     put("questionText", q.questionText)
                     put("questionImageUrl", q.questionImageUrl)
                     put("localImagePath", q.localImagePath)
-                    put("optionA", q.optionA)
-                    put("optionB", q.optionB)
-                    put("optionC", q.optionC)
-                    put("optionD", q.optionD)
+                    put("optionA", q.optionA ?: "")
+                    put("optionB", q.optionB ?: "")
+                    put("optionC", q.optionC ?: "")
+                    put("optionD", q.optionD ?: "")
                     put("optionAImageUrl", q.optionAImageUrl)
                     put("optionBImageUrl", q.optionBImageUrl)
                     put("optionCImageUrl", q.optionCImageUrl)
                     put("optionDImageUrl", q.optionDImageUrl)
                     put("correctAnswer", q.correctAnswer)
+                    put("acceptableAnswers", q.acceptableAnswers)
                     put("explanation", q.explanation)
                     put("isAnsweredCorrectly", q.isAnsweredCorrectly)
                 }
@@ -85,20 +89,22 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
             for (q in questions) {
                 val values = ContentValues().apply {
                     put("subject", q.subject)
+                    put("questionType", (q.questionType ?: Question.TYPE_CHOICE).ifBlank { Question.TYPE_CHOICE })
                     put("questionText", q.questionText)
                     put("questionImageUrl", q.questionImageUrl)
                     if (q.localImagePath != null) {
                         put("localImagePath", q.localImagePath)
                     }
-                    put("optionA", q.optionA)
-                    put("optionB", q.optionB)
-                    put("optionC", q.optionC)
-                    put("optionD", q.optionD)
+                    put("optionA", q.optionA ?: "")
+                    put("optionB", q.optionB ?: "")
+                    put("optionC", q.optionC ?: "")
+                    put("optionD", q.optionD ?: "")
                     put("optionAImageUrl", q.optionAImageUrl)
                     put("optionBImageUrl", q.optionBImageUrl)
                     put("optionCImageUrl", q.optionCImageUrl)
                     put("optionDImageUrl", q.optionDImageUrl)
                     put("correctAnswer", q.correctAnswer)
+                    put("acceptableAnswers", q.acceptableAnswers)
                     put("explanation", q.explanation)
                 }
 
@@ -240,26 +246,35 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
     }
 
     private fun Cursor.toQuestion(): Question {
+        val qTypeIdx = getColumnIndex("questionType")
+        val acceptAnsIdx = getColumnIndex("acceptableAnswers")
         val optAImgIdx = getColumnIndex("optionAImageUrl")
         val optBImgIdx = getColumnIndex("optionBImageUrl")
         val optCImgIdx = getColumnIndex("optionCImageUrl")
         val optDImgIdx = getColumnIndex("optionDImageUrl")
 
+        val optAIdx = getColumnIndex("optionA")
+        val optBIdx = getColumnIndex("optionB")
+        val optCIdx = getColumnIndex("optionC")
+        val optDIdx = getColumnIndex("optionD")
+
         return Question(
             id = getLong(getColumnIndexOrThrow("id")),
             subject = getString(getColumnIndexOrThrow("subject")),
+            questionType = if (qTypeIdx >= 0 && !isNull(qTypeIdx)) getString(qTypeIdx) else Question.TYPE_CHOICE,
             questionText = getString(getColumnIndexOrThrow("questionText")),
             questionImageUrl = getString(getColumnIndexOrThrow("questionImageUrl")),
             localImagePath = getString(getColumnIndexOrThrow("localImagePath")),
-            optionA = getString(getColumnIndexOrThrow("optionA")),
-            optionB = getString(getColumnIndexOrThrow("optionB")),
-            optionC = getString(getColumnIndexOrThrow("optionC")),
-            optionD = getString(getColumnIndexOrThrow("optionD")),
+            optionA = if (optAIdx >= 0 && !isNull(optAIdx)) getString(optAIdx) else "",
+            optionB = if (optBIdx >= 0 && !isNull(optBIdx)) getString(optBIdx) else "",
+            optionC = if (optCIdx >= 0 && !isNull(optCIdx)) getString(optCIdx) else "",
+            optionD = if (optDIdx >= 0 && !isNull(optDIdx)) getString(optDIdx) else "",
             optionAImageUrl = if (optAImgIdx >= 0) getString(optAImgIdx) else null,
             optionBImageUrl = if (optBImgIdx >= 0) getString(optBImgIdx) else null,
             optionCImageUrl = if (optCImgIdx >= 0) getString(optCImgIdx) else null,
             optionDImageUrl = if (optDImgIdx >= 0) getString(optDImgIdx) else null,
             correctAnswer = getString(getColumnIndexOrThrow("correctAnswer")),
+            acceptableAnswers = if (acceptAnsIdx >= 0 && !isNull(acceptAnsIdx)) getString(acceptAnsIdx) else null,
             explanation = getString(getColumnIndexOrThrow("explanation")),
             isAnsweredCorrectly = getInt(getColumnIndexOrThrow("isAnsweredCorrectly"))
         )

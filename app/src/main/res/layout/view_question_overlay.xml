@@ -141,10 +141,30 @@
                         android:adjustViewBounds="true"
                         android:maxHeight="200dp"
                         android:visibility="gone" />
+
+                    <!-- 幼儿语音题：中央大正方形图案卡片（280dp × 280dp，大尺寸居中，选择题隐藏） -->
+                    <FrameLayout
+                        android:id="@+id/cardVoiceSquareImage"
+                        android:layout_width="280dp"
+                        android:layout_height="280dp"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="18dp"
+                        android:background="@drawable/bg_option_btn_normal"
+                        android:padding="16dp"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:id="@+id/ivVoiceSquareImage"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:adjustViewBounds="true"
+                            android:scaleType="fitCenter" />
+                    </FrameLayout>
                 </LinearLayout>
 
-                <!-- 3. Apple Inset 选项区域（四周预留充足安全边距，支持遥控器平滑高亮放大） -->
+                <!-- 3.A Apple Inset 选项区域（选择题使用，语音题隐藏） -->
                 <LinearLayout
+                    android:id="@+id/layoutChoiceContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:clipChildren="false"
@@ -400,6 +420,96 @@
                                 android:textSize="18sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- 3.B 语音答题交互控制区域（选择题隐藏，语音题显示） -->
+                <LinearLayout
+                    android:id="@+id/layoutVoiceContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <!-- 语音录制主操作卡片按钮 -->
+                    <LinearLayout
+                        android:id="@+id/btnVoiceRecord"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="76dp"
+                        android:layout_margin="7dp"
+                        android:background="@drawable/selector_option_button"
+                        android:clickable="true"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:descendantFocusability="blocksDescendants"
+                        android:focusable="true"
+                        android:focusableInTouchMode="true"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:paddingStart="26dp"
+                        android:paddingTop="16dp"
+                        android:paddingEnd="26dp"
+                        android:paddingBottom="16dp">
+
+                        <ImageView
+                            android:id="@+id/ivMicIcon"
+                            android:layout_width="42dp"
+                            android:layout_height="42dp"
+                            android:background="@drawable/bg_option_tag"
+                            android:padding="9dp"
+                            android:src="@drawable/ic_mic" />
+
+                        <TextView
+                            android:id="@+id/tvVoiceStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="16dp"
+                            android:text="按住遥控器语音键 或 按【确定】键开始说话"
+                            android:textColor="@color/ios_text_primary"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvVoiceCountdown"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:text=""
+                            android:textColor="@color/ios_orange"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <!-- 实时音量波形 / 状态提示条 -->
+                    <LinearLayout
+                        android:id="@+id/layoutVoiceFeedback"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <ProgressBar
+                            android:id="@+id/pbVoiceLoading"
+                            style="?android:attr/progressBarStyleSmall"
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_marginEnd="10dp"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/tvVoiceResult"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=""
+                            android:textColor="@color/ios_text_secondary"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
 

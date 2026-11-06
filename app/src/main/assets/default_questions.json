@@ -90,5 +90,23 @@
     "optionDImageUrl": "https://img.icons8.com/color/180/grapes.png",
     "correctAnswer": "A",
     "explanation": "A选项是红彤彤的大苹果！B是香蕉，C是西瓜，D是葡萄。"
+  },
+  {
+    "subject": "幼儿启蒙",
+    "questionType": "VOICE",
+    "questionText": "【看图大声说】小朋友，快看大屏幕中间的大图，大声说出它的名字！",
+    "questionImageUrl": "https://img.icons8.com/color/480/apple.png",
+    "correctAnswer": "苹果",
+    "acceptableAnswers": "大苹果,红苹果,一个小苹果,apple",
+    "explanation": "图中是一个红彤彤的大苹果！多吃苹果身体棒棒！"
+  },
+  {
+    "subject": "幼儿启蒙",
+    "questionType": "VOICE",
+    "questionText": "【认图案】小朋友，请看大屏幕中间的图案，大声说出它是什么？",
+    "questionImageUrl": "https://img.icons8.com/color/480/sun.png",
+    "correctAnswer": "太阳",
+    "acceptableAnswers": "大太阳,红太阳,太阳公公,阳光,sun",
+    "explanation": "图中是红彤彤、暖洋洋的大太阳！"
   }
 ]

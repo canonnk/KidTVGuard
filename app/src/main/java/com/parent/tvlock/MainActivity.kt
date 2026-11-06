@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -16,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.parent.tvlock.db.AppDatabaseHelper
@@ -57,6 +59,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCurrentIntervalText: TextView
     private lateinit var tvCurrentServerUrl: TextView
 
+    private lateinit var tvCurrentVoiceModeText: TextView
+    private lateinit var tvCurrentVoiceDurationText: TextView
+    private lateinit var tvCurrentBaiduApiKey: TextView
+    private lateinit var tvCurrentBaiduSecretKey: TextView
+
     private lateinit var tvAnswerStatsBrief: TextView
     private lateinit var tvWrongCountBrief: TextView
     private lateinit var tvUsageStatsBrief: TextView
@@ -83,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         checkPermissionsAndUpdateUi()
         refreshDashboardBriefStats()
         tvCurrentServerUrl.text = preferenceManager.syncServerUrl
+        refreshVoiceSettingsUi()
     }
 
     private fun initViews() {
@@ -99,6 +107,11 @@ class MainActivity : AppCompatActivity() {
 
         tvCurrentIntervalText = findViewById(R.id.tvCurrentIntervalText)
         tvCurrentServerUrl = findViewById(R.id.tvCurrentServerUrl)
+
+        tvCurrentVoiceModeText = findViewById(R.id.tvCurrentVoiceModeText)
+        tvCurrentVoiceDurationText = findViewById(R.id.tvCurrentVoiceDurationText)
+        tvCurrentBaiduApiKey = findViewById(R.id.tvCurrentBaiduApiKey)
+        tvCurrentBaiduSecretKey = findViewById(R.id.tvCurrentBaiduSecretKey)
 
         tvAnswerStatsBrief = findViewById(R.id.tvAnswerStatsBrief)
         tvWrongCountBrief = findViewById(R.id.tvWrongCountBrief)
@@ -120,6 +133,11 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.btnSyncQuestions),
             findViewById(R.id.btnConfigServerUrl),
             findViewById(R.id.btnChangePassword),
+            findViewById(R.id.btnVoiceInteractionMode),
+            findViewById(R.id.btnVoiceMaxDuration),
+            findViewById(R.id.btnConfigBaiduApiKey),
+            findViewById(R.id.btnConfigBaiduSecretKey),
+            findViewById(R.id.btnTestVoiceAsr),
             findViewById(R.id.btnCardAnswerHistory),
             findViewById(R.id.btnCardWrongBook),
             findViewById(R.id.btnCardAppUsage)
@@ -128,6 +146,7 @@ class MainActivity : AppCompatActivity() {
         // 默认将遥控器焦点定于左侧主卡片的锁屏测试按钮
         FocusHelper.requestFocusSafe(findViewById(R.id.btnQuickLock))
         updateIntervalSelectionUi()
+        refreshVoiceSettingsUi()
     }
 
     private fun setupListeners() {
@@ -182,6 +201,31 @@ class MainActivity : AppCompatActivity() {
         // 修改家长密码
         findViewById<View>(R.id.btnChangePassword).setOnClickListener {
             showChangePasswordDialog()
+        }
+
+        // 语音认读题：交互手势模式切换
+        findViewById<View>(R.id.btnVoiceInteractionMode).setOnClickListener {
+            showVoiceInteractionModeDialog()
+        }
+
+        // 语音认读题：最大录音时长设置
+        findViewById<View>(R.id.btnVoiceMaxDuration).setOnClickListener {
+            showVoiceMaxDurationDialog()
+        }
+
+        // 语音认读题：配置百度语音 API Key
+        findViewById<View>(R.id.btnConfigBaiduApiKey).setOnClickListener {
+            showConfigBaiduApiKeyDialog()
+        }
+
+        // 语音认读题：配置百度语音 Secret Key
+        findViewById<View>(R.id.btnConfigBaiduSecretKey).setOnClickListener {
+            showConfigBaiduSecretKeyDialog()
+        }
+
+        // 语音认读题：一键测试麦克风与百度鉴权
+        findViewById<View>(R.id.btnTestVoiceAsr).setOnClickListener {
+            performTestBaiduVoice()
         }
 
         // 数据审计看板入口
@@ -482,6 +526,120 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    private fun refreshVoiceSettingsUi() {
+        tvCurrentVoiceModeText.text = if (preferenceManager.voiceInteractionMode == PreferenceManager.VOICE_MODE_PUSH_TO_TALK) {
+            "对讲机模式（按住说话）"
+        } else {
+            "单击模式（按一下开始）"
+        }
+        tvCurrentVoiceDurationText.text = "${preferenceManager.voiceMaxDurationSeconds} 秒"
+
+        val apiKey = preferenceManager.baiduAsrApiKey
+        tvCurrentBaiduApiKey.text = if (apiKey.isNotBlank()) {
+            if (apiKey.length > 8) apiKey.take(5) + "..." + apiKey.takeLast(4) else apiKey
+        } else "未配置"
+
+        val secretKey = preferenceManager.baiduAsrSecretKey
+        tvCurrentBaiduSecretKey.text = if (secretKey.isNotBlank()) "••••••••" else "未配置"
+    }
+
+    private fun showVoiceInteractionModeDialog() {
+        val modes = arrayOf("对讲机模式（按住遥控器语音/OK键说话，松手提交）", "单击模式（按一下开始录音，再按一下或超时自动提交）")
+        val current = preferenceManager.voiceInteractionMode
+        AlertDialog.Builder(this)
+            .setTitle("选择语音按键交互模式")
+            .setSingleChoiceItems(modes, current) { dialog, which ->
+                preferenceManager.voiceInteractionMode = which
+                refreshVoiceSettingsUi()
+                Toast.makeText(this, "语音交互模式已更新", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showVoiceMaxDurationDialog() {
+        val labels = arrayOf("3 秒", "4 秒（推荐幼儿短语）", "5 秒", "6 秒", "8 秒", "10 秒")
+        val values = intArrayOf(3, 4, 5, 6, 8, 10)
+        val currentVal = preferenceManager.voiceMaxDurationSeconds
+        val currentIdx = values.indexOf(currentVal).coerceAtLeast(1)
+
+        AlertDialog.Builder(this)
+            .setTitle("设置最长录音持续时间")
+            .setSingleChoiceItems(labels, currentIdx) { dialog, which ->
+                preferenceManager.voiceMaxDurationSeconds = values[which]
+                refreshVoiceSettingsUi()
+                Toast.makeText(this, "最长录音时长已设置为 ${values[which]} 秒", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showConfigBaiduApiKeyDialog() {
+        val input = EditText(this).apply {
+            setText(preferenceManager.baiduAsrApiKey)
+            hint = "请输入百度智能云短语音识别 API Key"
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("配置百度语音 API Key")
+            .setView(input)
+            .setPositiveButton("保存") { _, _ ->
+                val newKey = input.text.toString().trim()
+                preferenceManager.baiduAsrApiKey = newKey
+                refreshVoiceSettingsUi()
+                Toast.makeText(this, "API Key 已保存", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showConfigBaiduSecretKeyDialog() {
+        val input = EditText(this).apply {
+            setText(preferenceManager.baiduAsrSecretKey)
+            hint = "请输入百度智能云短语音识别 Secret Key"
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("配置百度语音 Secret Key")
+            .setView(input)
+            .setPositiveButton("保存") { _, _ ->
+                val newKey = input.text.toString().trim()
+                preferenceManager.baiduAsrSecretKey = newKey
+                refreshVoiceSettingsUi()
+                Toast.makeText(this, "Secret Key 已保存", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun performTestBaiduVoice() {
+        // 检查录音权限
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
+        }
+
+        Toast.makeText(this, "正在测试百度语音识别服务连通性...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val baiduManager = com.parent.tvlock.net.BaiduSpeechManager.getInstance(this@MainActivity)
+            val result = baiduManager.testConnection()
+            result.onSuccess { msg ->
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("测试成功")
+                    .setMessage(msg)
+                    .setPositiveButton("确定", null)
+                    .show()
+            }.onFailure { e ->
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("测试失败")
+                    .setMessage(e.message ?: "未知错误")
+                    .setPositiveButton("确定", null)
+                    .show()
+            }
+        }
     }
 
     private fun showChangePasswordDialog() {
