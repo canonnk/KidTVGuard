@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- TV UI 专用高对比度配色 -->
+    <color name="tv_bg_dark">#F0090D16</color>
+    <color name="tv_card_bg">#253047</color>
+    <color name="tv_card_stroke">#3B4968</color>
+    <color name="tv_focus_stroke">#FFB300</color>
+    <color name="tv_focus_bg">#344365</color>
+    <color name="tv_correct_green">#00C853</color>
+    <color name="tv_wrong_red">#D50000</color>
+    <color name="tv_text_primary">#FFFFFF</color>
+    <color name="tv_text_secondary">#B0BEC5</color>
+    <color name="tv_badge_math">#1E88E5</color>
+    <color name="tv_badge_chinese">#E53935</color>
+    <color name="tv_badge_english">#43A047</color>
+    <color name="tv_badge_physics">#8E24AA</color>
+    <color name="tv_badge_default">#FB8C00</color>
+    <!-- Apple Cupertino / tvOS 深度美学配色 -->
+    <color name="ios_bg_black">#000000</color>
+    <color name="ios_grouped_bg">#000000</color>
+    <color name="ios_card_bg">#1C1C1E</color>
+    <color name="ios_card_bg_elevated">#2C2C2E</color>
+    <color name="ios_card_bg_focused">#3A3A3C</color>
+    <color name="ios_focus_stroke">#0A84FF</color>
+    <color name="ios_focus_glow">#400A84FF</color>
+    <color name="ios_separator">#2C2C2E</color>
+    <color name="ios_separator_light">#38383A</color>
+
+    <color name="ios_text_primary">#FFFFFF</color>
+    <color name="ios_text_secondary">#8E8E93</color>
+    <color name="ios_text_tertiary">#636366</color>
+
+    <!-- Apple 官方功能图标圆角徽章底色 -->
+    <color name="ios_blue">#007AFF</color>
+    <color name="ios_green">#34C759</color>
+    <color name="ios_indigo">#5856D6</color>
+    <color name="ios_orange">#FF9500</color>
+    <color name="ios_pink">#FF2D55</color>
+    <color name="ios_purple">#AF52DE</color>
+    <color name="ios_red">#FF3B30</color>
+    <color name="ios_teal">#30B0C7</color>
+    <color name="ios_yellow">#FFCC00</color>
+    <color name="ios_gray">#8E8E93</color>
+
+    <color name="ios_badge_green_bg">#1A34C759</color>
+    <color name="ios_badge_red_bg">#1AFF3B30</color>
+</resources>

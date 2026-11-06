@@ -1,0 +1,68 @@
+[
+  {
+    "subject": "数学",
+    "questionText": "在△ABC中，已知AB = AC，顶角∠A = 40°，则底角∠B的度数是（ ）",
+    "questionImageUrl": null,
+    "optionA": "40°",
+    "optionB": "70°",
+    "optionC": "80°",
+    "optionD": "140°",
+    "correctAnswer": "B",
+    "explanation": "等腰三角形两底角相等。根据三角形内角和定理，底角 ∠B = (180° - 40°) ÷ 2 = 70°。故选B。"
+  },
+  {
+    "subject": "语文",
+    "questionText": "下列诗句中，出自唐代诗人王勃《滕王阁序》的名句是（ ）",
+    "questionImageUrl": null,
+    "optionA": "海内存知己，天涯若比邻",
+    "optionB": "落霞与孤鹜齐飞，秋水共长天一色",
+    "optionC": "长风破浪会有时，直挂云帆济沧海",
+    "optionD": "大漠孤烟直，长河落日圆",
+    "correctAnswer": "B",
+    "explanation": "A项出自王勃《送杜少府之任蜀州》；B项出自王勃《滕王阁序》；C项出自李白《行路难》；D项出自王维《使至塞上》。故选B。"
+  },
+  {
+    "subject": "英语",
+    "questionText": "She is very good at playing ______ piano, but her brother prefers playing ______ basketball.",
+    "questionImageUrl": null,
+    "optionA": "the; /",
+    "optionB": "/; the",
+    "optionC": "the; the",
+    "optionD": "/; /",
+    "correctAnswer": "A",
+    "explanation": "在英语中，西洋乐器名词前一般加定冠词the（play the piano）；而球类运动名词前一般不加冠词（play basketball）。故选A。"
+  },
+  {
+    "subject": "物理",
+    "questionText": "光从空气斜射入水中时，关于折射角与入射角的大小关系，下列判断正确的是（ ）",
+    "questionImageUrl": null,
+    "optionA": "折射角大于入射角",
+    "optionB": "折射角等于入射角",
+    "optionC": "折射角小于入射角",
+    "optionD": "折射角大小与入射角无关",
+    "correctAnswer": "C",
+    "explanation": "光从空气斜射入水或其他透明介质中时，折射光线偏向法线，折射角小于入射角。故选C。"
+  },
+  {
+    "subject": "数学",
+    "questionText": "若关于x的一元一次方程 2x - 4 = 6，则该方程的解 x 为（ ）",
+    "questionImageUrl": null,
+    "optionA": "1",
+    "optionB": "3",
+    "optionC": "5",
+    "optionD": "10",
+    "correctAnswer": "C",
+    "explanation": "移项得 2x = 6 + 4 = 10，两边同时除以 2 得 x = 5。故选C。"
+  },
+  {
+    "subject": "历史",
+    "questionText": "中国历史上第一个统一的多民族中央集权封建王朝是（ ）",
+    "questionImageUrl": null,
+    "optionA": "夏朝",
+    "optionB": "商朝",
+    "optionC": "秦朝",
+    "optionD": "汉朝",
+    "correctAnswer": "C",
+    "explanation": "公元前221年，秦王嬴政灭六国统一天下，建立了中国历史上第一个统一的多民族中央集权封建国家——秦朝。故选C。"
+  }
+]

@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F2000000"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:fillViewport="true">
+
+    <!-- 外层垂直与水平居中容器：当内容高度未占满屏幕时自动上下居中展示 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingStart="48dp"
+        android:paddingTop="36dp"
+        android:paddingEnd="48dp"
+        android:paddingBottom="36dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <!-- 苹果卡片主内容容器（限制最大宽度 980dp，在大屏/4K下居中成精美卡片，杜绝超宽拉伸） -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false">
+
+            <LinearLayout
+                android:id="@+id/quizContentContainer"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintWidth_max="980dp">
+
+                <!-- 1. Apple tvOS 顶栏提示区 -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_ios_badge_orange"
+                        android:gravity="center"
+                        android:text="⏳"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/tvLockTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:text="屏幕使用限额已到 · 答题解锁"
+                        android:textColor="@color/ios_text_primary"
+                        android:textSize="26sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvLockSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="24dp"
+                    android:text="答对本题即可重新解锁电视 10 分钟 · 答错将展示详细解析并自动换题"
+                    android:textColor="@color/ios_text_secondary"
+                    android:textSize="15sp" />
+
+                <!-- 2. Apple Inset Grouped 题目卡片 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="20dp"
+                    android:background="@drawable/bg_ios_card"
+                    android:orientation="vertical"
+                    android:paddingStart="32dp"
+                    android:paddingTop="26dp"
+                    android:paddingEnd="32dp"
+                    android:paddingBottom="28dp">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tvSubjectBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_badge"
+                            android:paddingStart="14dp"
+                            android:paddingTop="4dp"
+                            android:paddingEnd="14dp"
+                            android:paddingBottom="4dp"
+                            android:text="数学"
+                            android:textColor="@color/white"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvQuestionProgress"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:text="防沉迷随机抽题"
+                            android:textColor="@color/ios_text_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvQuestionText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="18dp"
+                        android:lineSpacingExtra="8dp"
+                        android:text="题干内容加载中..."
+                        android:textColor="@color/ios_text_primary"
+                        android:textSize="23sp"
+                        android:textStyle="bold" />
+
+                    <!-- 几何/物理题干图片（无图时隐藏） -->
+                    <ImageView
+                        android:id="@+id/ivQuestionImage"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="16dp"
+                        android:adjustViewBounds="true"
+                        android:maxHeight="200dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- 3. Apple Inset 选项区域（四周预留充足安全边距，支持遥控器平滑高亮放大） -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:orientation="vertical">
+
+                    <!-- 第 1 排：选项 A 与 选项 B -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/btnOptionA"
+                            android:layout_width="0dp"
+                            android:layout_height="68dp"
+                            android:layout_margin="7dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/selector_option_button"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:gravity="center_vertical"
+                            android:nextFocusDown="@+id/btnOptionC"
+                            android:nextFocusRight="@+id/btnOptionB"
+                            android:paddingStart="24dp"
+                            android:paddingEnd="24dp"
+                            android:text="A. 选项A"
+                            android:textColor="@color/ios_text_primary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/btnOptionB"
+                            android:layout_width="0dp"
+                            android:layout_height="68dp"
+                            android:layout_margin="7dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/selector_option_button"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:gravity="center_vertical"
+                            android:nextFocusDown="@+id/btnOptionD"
+                            android:nextFocusLeft="@+id/btnOptionA"
+                            android:paddingStart="24dp"
+                            android:paddingEnd="24dp"
+                            android:text="B. 选项B"
+                            android:textColor="@color/ios_text_primary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- 第 2 排：选项 C 与 选项 D -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/btnOptionC"
+                            android:layout_width="0dp"
+                            android:layout_height="68dp"
+                            android:layout_margin="7dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/selector_option_button"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:gravity="center_vertical"
+                            android:nextFocusUp="@+id/btnOptionA"
+                            android:nextFocusRight="@+id/btnOptionD"
+                            android:paddingStart="24dp"
+                            android:paddingEnd="24dp"
+                            android:text="C. 选项C"
+                            android:textColor="@color/ios_text_primary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/btnOptionD"
+                            android:layout_width="0dp"
+                            android:layout_height="68dp"
+                            android:layout_margin="7dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/selector_option_button"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:gravity="center_vertical"
+                            android:nextFocusUp="@+id/btnOptionB"
+                            android:nextFocusLeft="@+id/btnOptionC"
+                            android:paddingStart="24dp"
+                            android:paddingEnd="24dp"
+                            android:text="D. 选项D"
+                            android:textColor="@color/ios_text_primary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- 4. 答错反馈与解析区域（默认隐藏） -->
+                <LinearLayout
+                    android:id="@+id/layoutExplanation"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:background="@drawable/bg_explanation_box"
+                    android:orientation="vertical"
+                    android:padding="22dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvFeedbackTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="❌ 回答错误！正确答案是 B"
+                        android:textColor="@color/ios_red"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvExplanation"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:lineSpacingExtra="6dp"
+                        android:text="解析内容..."
+                        android:textColor="@color/ios_text_primary"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/tvCountdownNotice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="3 秒后自动载入下一题..."
+                        android:textColor="@color/ios_orange"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- 5. 答对鼓励提示区（默认隐藏） -->
+                <LinearLayout
+                    android:id="@+id/layoutSuccess"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:background="@drawable/bg_option_btn_correct"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:padding="22dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvSuccessNotice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🎉 回答正确！正在为您解锁电视，请合理控制观看时间..."
+                        android:textColor="@color/white"
+                        android:textSize="19sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- 6. 底部遥控器指引 -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="26dp"
+                    android:text="💡 遥控器提示：使用方向键切换选项 · 按【确定/OK】键提交答案 · 锁屏期间返回键已拦截"
+                    android:textColor="@color/ios_text_tertiary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </LinearLayout>
+</ScrollView>
