@@ -13,7 +13,7 @@ class AppDatabaseHelper private constructor(context: Context) :
 
     companion object {
         const val DATABASE_NAME = "tv_lock.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
 
         // 表名定义
         const val TABLE_QUESTIONS = "questions"
@@ -52,6 +52,10 @@ class AppDatabaseHelper private constructor(context: Context) :
                 optionB TEXT NOT NULL,
                 optionC TEXT NOT NULL,
                 optionD TEXT NOT NULL,
+                optionAImageUrl TEXT,
+                optionBImageUrl TEXT,
+                optionCImageUrl TEXT,
+                optionDImageUrl TEXT,
                 correctAnswer TEXT NOT NULL,
                 explanation TEXT,
                 isAnsweredCorrectly INTEGER NOT NULL DEFAULT 0
@@ -112,6 +116,16 @@ class AppDatabaseHelper private constructor(context: Context) :
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         L.i("Upgrading database from version $oldVersion to $newVersion")
-        // 当前为 v1，预留后续版本迁移逻辑
+        if (oldVersion < 2) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_QUESTIONS ADD COLUMN optionAImageUrl TEXT;")
+                db.execSQL("ALTER TABLE $TABLE_QUESTIONS ADD COLUMN optionBImageUrl TEXT;")
+                db.execSQL("ALTER TABLE $TABLE_QUESTIONS ADD COLUMN optionCImageUrl TEXT;")
+                db.execSQL("ALTER TABLE $TABLE_QUESTIONS ADD COLUMN optionDImageUrl TEXT;")
+                L.i("Successfully upgraded database to v2 (added option image columns).")
+            } catch (e: Exception) {
+                L.e("Failed to upgrade database to v2", tr = e)
+            }
+        }
     }
 }

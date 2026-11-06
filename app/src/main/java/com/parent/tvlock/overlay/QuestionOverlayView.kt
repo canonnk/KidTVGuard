@@ -18,6 +18,7 @@ import com.parent.tvlock.db.dao.QuestionDao
 import com.parent.tvlock.db.dao.WrongQuestionDao
 import com.parent.tvlock.db.model.AnswerRecord
 import com.parent.tvlock.db.model.Question
+import com.parent.tvlock.net.MemoryImageLoader
 import com.parent.tvlock.util.FocusHelper
 import com.parent.tvlock.util.L
 import kotlinx.coroutines.CoroutineScope
@@ -60,10 +61,25 @@ class QuestionOverlayView @JvmOverloads constructor(
     private val tvQuestionText: TextView
     private val ivQuestionImage: ImageView
 
-    private val btnOptionA: TextView
-    private val btnOptionB: TextView
-    private val btnOptionC: TextView
-    private val btnOptionD: TextView
+    private val btnOptionA: View
+    private val btnOptionB: View
+    private val btnOptionC: View
+    private val btnOptionD: View
+
+    private val tvOptionTagA: TextView
+    private val tvOptionTagB: TextView
+    private val tvOptionTagC: TextView
+    private val tvOptionTagD: TextView
+
+    private val ivOptionA: ImageView
+    private val ivOptionB: ImageView
+    private val ivOptionC: ImageView
+    private val ivOptionD: ImageView
+
+    private val tvOptionA: TextView
+    private val tvOptionB: TextView
+    private val tvOptionC: TextView
+    private val tvOptionD: TextView
 
     private val layoutExplanation: LinearLayout
     private val tvFeedbackTitle: TextView
@@ -93,6 +109,21 @@ class QuestionOverlayView @JvmOverloads constructor(
         btnOptionB = view.findViewById(R.id.btnOptionB)
         btnOptionC = view.findViewById(R.id.btnOptionC)
         btnOptionD = view.findViewById(R.id.btnOptionD)
+
+        tvOptionTagA = view.findViewById(R.id.tvOptionTagA)
+        tvOptionTagB = view.findViewById(R.id.tvOptionTagB)
+        tvOptionTagC = view.findViewById(R.id.tvOptionTagC)
+        tvOptionTagD = view.findViewById(R.id.tvOptionTagD)
+
+        ivOptionA = view.findViewById(R.id.ivOptionA)
+        ivOptionB = view.findViewById(R.id.ivOptionB)
+        ivOptionC = view.findViewById(R.id.ivOptionC)
+        ivOptionD = view.findViewById(R.id.ivOptionD)
+
+        tvOptionA = view.findViewById(R.id.tvOptionA)
+        tvOptionB = view.findViewById(R.id.tvOptionB)
+        tvOptionC = view.findViewById(R.id.tvOptionC)
+        tvOptionD = view.findViewById(R.id.tvOptionD)
 
         layoutExplanation = view.findViewById(R.id.layoutExplanation)
         tvFeedbackTitle = view.findViewById(R.id.tvFeedbackTitle)
@@ -188,11 +219,19 @@ class QuestionOverlayView @JvmOverloads constructor(
         tvQuestionProgress.text = if (isFromWrongBook) "错题重练巩固" else "防沉迷随机抽题"
         tvQuestionText.text = question.questionText
 
-        // 几何/物理题干图片渲染
-        val localPath = question.localImagePath
-        if (!localPath.isNullOrBlank() && File(localPath).exists()) {
+        // 题干图片渲染（优先从网络 URL 纯内存流式解码加载，零磁盘占用）
+        val stemUrl = question.questionImageUrl
+        if (!stemUrl.isNullOrBlank()) {
+            MemoryImageLoader.getInstance(context).loadImage(
+                scope = viewScope,
+                url = stemUrl,
+                targetView = ivQuestionImage,
+                reqWidth = 800,
+                reqHeight = 400
+            )
+        } else if (!question.localImagePath.isNullOrBlank() && File(question.localImagePath).exists()) {
             try {
-                val bitmap = BitmapFactory.decodeFile(localPath)
+                val bitmap = BitmapFactory.decodeFile(question.localImagePath)
                 if (bitmap != null) {
                     ivQuestionImage.setImageBitmap(bitmap)
                     ivQuestionImage.visibility = View.VISIBLE
@@ -200,21 +239,72 @@ class QuestionOverlayView @JvmOverloads constructor(
                     ivQuestionImage.visibility = View.GONE
                 }
             } catch (e: Exception) {
-                L.e("Failed to decode image from path: $localPath", tr = e)
+                L.e("Failed to decode image from local path: ${question.localImagePath}", tr = e)
                 ivQuestionImage.visibility = View.GONE
             }
         } else {
+            ivQuestionImage.setImageDrawable(null)
             ivQuestionImage.visibility = View.GONE
         }
 
-        // 选项文本设置
-        btnOptionA.text = "A. ${question.optionA}"
-        btnOptionB.text = "B. ${question.optionB}"
-        btnOptionC.text = "C. ${question.optionC}"
-        btnOptionD.text = "D. ${question.optionD}"
+        // 选项渲染（支持方案2：选项带图，纯内存按需下载渲染，保持苹果级居中布局）
+        bindOptionItem(btnOptionA, tvOptionTagA, "A", ivOptionA, question.optionAImageUrl, tvOptionA, question.optionA)
+        bindOptionItem(btnOptionB, tvOptionTagB, "B", ivOptionB, question.optionBImageUrl, tvOptionB, question.optionB)
+        bindOptionItem(btnOptionC, tvOptionTagC, "C", ivOptionC, question.optionCImageUrl, tvOptionC, question.optionC)
+        bindOptionItem(btnOptionD, tvOptionTagD, "D", ivOptionD, question.optionDImageUrl, tvOptionD, question.optionD)
 
         // 强制使选项 A 抢占电视遥控器初始焦点
         FocusHelper.requestFocusSafe(btnOptionA)
+    }
+
+    /**
+     * 单个选项卡片数据绑定（支持纯文本题、图文混排题、纯图片选图题）
+     */
+    private fun bindOptionItem(
+        container: View,
+        tvTag: TextView,
+        tag: String,
+        ivOption: ImageView,
+        imageUrl: String?,
+        tvText: TextView,
+        rawText: String
+    ) {
+        tvTag.text = tag
+
+        // 1. 选项图片：纯内存流式按需加载，零磁盘存储
+        if (!imageUrl.isNullOrBlank()) {
+            MemoryImageLoader.getInstance(context).loadImage(
+                scope = viewScope,
+                url = imageUrl,
+                targetView = ivOption,
+                reqWidth = 240,
+                reqHeight = 160
+            )
+        } else {
+            ivOption.setImageDrawable(null)
+            ivOption.visibility = View.GONE
+        }
+
+        // 2. 选项文字：清洗可能重复的 "A." 前缀
+        val cleanText = rawText.trim()
+            .removePrefix("$tag.")
+            .removePrefix("$tag、")
+            .removePrefix("$tag: ")
+            .removePrefix("$tag ")
+            .trim()
+
+        if (cleanText.isEmpty() || cleanText.equals(tag, ignoreCase = true)) {
+            // 看图选图题，若选项文本为空或仅为标签自身
+            if (!imageUrl.isNullOrBlank()) {
+                tvText.visibility = View.GONE
+            } else {
+                tvText.visibility = View.VISIBLE
+                tvText.text = tag
+            }
+        } else {
+            tvText.visibility = View.VISIBLE
+            tvText.text = cleanText
+        }
     }
 
     /**
@@ -328,7 +418,7 @@ class QuestionOverlayView @JvmOverloads constructor(
         }
     }
 
-    private fun getButtonByOption(option: String): TextView? {
+    private fun getButtonByOption(option: String): View? {
         return when (option.uppercase()) {
             "A" -> btnOptionA
             "B" -> btnOptionB

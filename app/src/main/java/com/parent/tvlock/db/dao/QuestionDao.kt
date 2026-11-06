@@ -25,6 +25,10 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
             put("optionB", question.optionB)
             put("optionC", question.optionC)
             put("optionD", question.optionD)
+            put("optionAImageUrl", question.optionAImageUrl)
+            put("optionBImageUrl", question.optionBImageUrl)
+            put("optionCImageUrl", question.optionCImageUrl)
+            put("optionDImageUrl", question.optionDImageUrl)
             put("correctAnswer", question.correctAnswer)
             put("explanation", question.explanation)
             put("isAnsweredCorrectly", question.isAnsweredCorrectly)
@@ -50,6 +54,10 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
                     put("optionB", q.optionB)
                     put("optionC", q.optionC)
                     put("optionD", q.optionD)
+                    put("optionAImageUrl", q.optionAImageUrl)
+                    put("optionBImageUrl", q.optionBImageUrl)
+                    put("optionCImageUrl", q.optionCImageUrl)
+                    put("optionDImageUrl", q.optionDImageUrl)
                     put("correctAnswer", q.correctAnswer)
                     put("explanation", q.explanation)
                     put("isAnsweredCorrectly", q.isAnsweredCorrectly)
@@ -86,6 +94,10 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
                     put("optionB", q.optionB)
                     put("optionC", q.optionC)
                     put("optionD", q.optionD)
+                    put("optionAImageUrl", q.optionAImageUrl)
+                    put("optionBImageUrl", q.optionBImageUrl)
+                    put("optionCImageUrl", q.optionCImageUrl)
+                    put("optionDImageUrl", q.optionDImageUrl)
                     put("correctAnswer", q.correctAnswer)
                     put("explanation", q.explanation)
                 }
@@ -228,6 +240,11 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
     }
 
     private fun Cursor.toQuestion(): Question {
+        val optAImgIdx = getColumnIndex("optionAImageUrl")
+        val optBImgIdx = getColumnIndex("optionBImageUrl")
+        val optCImgIdx = getColumnIndex("optionCImageUrl")
+        val optDImgIdx = getColumnIndex("optionDImageUrl")
+
         return Question(
             id = getLong(getColumnIndexOrThrow("id")),
             subject = getString(getColumnIndexOrThrow("subject")),
@@ -238,6 +255,10 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
             optionB = getString(getColumnIndexOrThrow("optionB")),
             optionC = getString(getColumnIndexOrThrow("optionC")),
             optionD = getString(getColumnIndexOrThrow("optionD")),
+            optionAImageUrl = if (optAImgIdx >= 0) getString(optAImgIdx) else null,
+            optionBImageUrl = if (optBImgIdx >= 0) getString(optBImgIdx) else null,
+            optionCImageUrl = if (optCImgIdx >= 0) getString(optCImgIdx) else null,
+            optionDImageUrl = if (optDImgIdx >= 0) getString(optDImgIdx) else null,
             correctAnswer = getString(getColumnIndexOrThrow("correctAnswer")),
             explanation = getString(getColumnIndexOrThrow("explanation")),
             isAnsweredCorrectly = getInt(getColumnIndexOrThrow("isAnsweredCorrectly"))

@@ -122,6 +122,8 @@ class WrongQuestionDao(private val dbHelper: AppDatabaseHelper) {
                 q.id AS q_id, q.subject AS q_subject, q.questionText AS q_questionText,
                 q.questionImageUrl AS q_questionImageUrl, q.localImagePath AS q_localImagePath,
                 q.optionA AS q_optionA, q.optionB AS q_optionB, q.optionC AS q_optionC, q.optionD AS q_optionD,
+                q.optionAImageUrl AS q_optionAImageUrl, q.optionBImageUrl AS q_optionBImageUrl,
+                q.optionCImageUrl AS q_optionCImageUrl, q.optionDImageUrl AS q_optionDImageUrl,
                 q.correctAnswer AS q_correctAnswer, q.explanation AS q_explanation,
                 q.isAnsweredCorrectly AS q_isAnsweredCorrectly
             FROM ${AppDatabaseHelper.TABLE_WRONG_QUESTIONS} w
@@ -143,6 +145,10 @@ class WrongQuestionDao(private val dbHelper: AppDatabaseHelper) {
                     optionB = cursor.getString(cursor.getColumnIndexOrThrow("q_optionB")),
                     optionC = cursor.getString(cursor.getColumnIndexOrThrow("q_optionC")),
                     optionD = cursor.getString(cursor.getColumnIndexOrThrow("q_optionD")),
+                    optionAImageUrl = cursor.getString(cursor.getColumnIndexOrThrow("q_optionAImageUrl")),
+                    optionBImageUrl = cursor.getString(cursor.getColumnIndexOrThrow("q_optionBImageUrl")),
+                    optionCImageUrl = cursor.getString(cursor.getColumnIndexOrThrow("q_optionCImageUrl")),
+                    optionDImageUrl = cursor.getString(cursor.getColumnIndexOrThrow("q_optionDImageUrl")),
                     correctAnswer = cursor.getString(cursor.getColumnIndexOrThrow("q_correctAnswer")),
                     explanation = cursor.getString(cursor.getColumnIndexOrThrow("q_explanation")),
                     isAnsweredCorrectly = cursor.getInt(cursor.getColumnIndexOrThrow("q_isAnsweredCorrectly"))

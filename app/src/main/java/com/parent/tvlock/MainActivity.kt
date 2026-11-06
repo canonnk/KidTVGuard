@@ -449,13 +449,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performSync() {
-        Toast.makeText(this, "正在从服务器同步题库并下载图片...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "正在从服务器同步最新题库配置...", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
             val result = syncManager.syncQuestions()
             result.onSuccess { syncResult ->
                 Toast.makeText(
                     this@MainActivity,
-                    "同步成功！收到 ${syncResult.totalReceived} 题，更新入库 ${syncResult.savedCount} 题，下载 ${syncResult.downloadedImages} 张图片",
+                    "同步成功！收到 ${syncResult.totalReceived} 题，入库 ${syncResult.savedCount} 题（图片按需免存直载，零占电视空间）",
                     Toast.LENGTH_LONG
                 ).show()
             }.onFailure { e ->

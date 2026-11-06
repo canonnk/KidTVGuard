@@ -32,14 +32,34 @@ class SyncManager(private val context: Context) {
 
     private val dbHelper = AppDatabaseHelper.getInstance(context)
     private val questionDao = QuestionDao(dbHelper)
-    private val imageDownloadHelper = ImageDownloadHelper.getInstance(context)
     private val preferenceManager = PreferenceManager.getInstance(context)
     private val gson = Gson()
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private val client: OkHttpClient = createCompatibleClient()
+
+    private fun createCompatibleClient(): OkHttpClient {
+        return try {
+            val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(object : javax.net.ssl.X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
+            })
+            val sslContext = javax.net.ssl.SSLContext.getInstance("TLS")
+            sslContext.init(null, trustAllCerts, java.security.SecureRandom())
+
+            OkHttpClient.Builder()
+                .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
+                .hostnameVerifier { _, _ -> true }
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .build()
+        } catch (e: Exception) {
+            OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .build()
+        }
+    }
 
     companion object {
         const val DEFAULT_ASSET_FILE = "default_questions.json"
@@ -55,26 +75,20 @@ class SyncManager(private val context: Context) {
     }
 
     /**
-     * 检测本地数据库，若为空则自动从 assets/default_questions.json 导入初始题库
-     * @return 导入的题目数量
+     * 检测本地数据库并从 assets/default_questions.json 导入初始或更新题库
+     * @return 导入/更新的题目数量
      */
     suspend fun loadDefaultQuestionsIfNeeded(): Int = withContext(Dispatchers.IO) {
-        val currentCount = questionDao.getCount()
-        if (currentCount > 0) {
-            L.d("Database already has $currentCount questions, skipping default import.")
-            return@withContext 0
-        }
-
-        L.i("Database is empty, loading default questions from assets...")
+        L.i("Checking default questions from assets...")
         try {
             context.assets.open(DEFAULT_ASSET_FILE).use { inputStream ->
                 InputStreamReader(inputStream, Charsets.UTF_8).use { reader ->
                     val type = object : TypeToken<List<Question>>() {}.type
                     val list: List<Question> = gson.fromJson(reader, type)
                     if (list.isNotEmpty()) {
-                        val inserted = questionDao.batchInsert(list)
-                        L.i("Loaded $inserted default questions into SQLite.")
-                        return@withContext inserted
+                        val count = questionDao.batchInsertOrUpdate(list)
+                        L.i("Loaded/Updated $count default questions into SQLite.")
+                        return@withContext count
                     }
                 }
             }
@@ -117,37 +131,27 @@ class SyncManager(private val context: Context) {
                         return@withContext Result.success(SyncResult(0, 0, 0))
                     }
 
-                    var downloadedImages = 0
-                    val questionsToSave = mutableListOf<Question>()
-
-                    for (rawQ in parsedQuestions) {
-                        var localImagePath = rawQ.localImagePath
-                        val imageUrl = rawQ.questionImageUrl
-
-                        // 若包含网络图片，尝试下载或使用已有的本地缓存
-                        if (!imageUrl.isNullOrBlank()) {
-                            val cachedPath = imageDownloadHelper.downloadImage(imageUrl)
-                            if (cachedPath != null) {
-                                localImagePath = cachedPath
-                                downloadedImages++
-                            }
+                    // 释放可能残留的历史磁盘图片目录，节约电视宝贵存储
+                    try {
+                        val legacyDir = java.io.File(context.filesDir, "question_images")
+                        if (legacyDir.exists()) {
+                            legacyDir.deleteRecursively()
+                            L.i("Cleaned up legacy disk image directory to free TV storage.")
                         }
-
-                        questionsToSave.add(
-                            rawQ.copy(localImagePath = localImagePath)
-                        )
+                    } catch (e: Exception) {
+                        L.w("Failed to delete legacy question_images directory: ${e.message}")
                     }
 
-                    // 批量保存/更新到本地 SQLite
-                    val saved = questionDao.batchInsertOrUpdate(questionsToSave)
+                    // 电视空间有限：不缓存图片至磁盘，直接入库远程 URL，展示时纯内存流式按需加载
+                    val saved = questionDao.batchInsertOrUpdate(parsedQuestions)
                     preferenceManager.lastSyncTime = System.currentTimeMillis()
 
-                    L.i("Sync completed: received ${parsedQuestions.size}, saved $saved, downloaded $downloadedImages images.")
+                    L.i("Sync completed: received ${parsedQuestions.size}, saved $saved, zero disk images cached.")
                     return@withContext Result.success(
                         SyncResult(
                             totalReceived = parsedQuestions.size,
                             savedCount = saved,
-                            downloadedImages = downloadedImages
+                            downloadedImages = 0
                         )
                     )
                 }

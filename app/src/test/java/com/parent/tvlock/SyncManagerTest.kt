@@ -37,14 +37,30 @@ class SyncManagerTest {
     }
 
     @Test
-    fun testImageFileNameHash() {
-        val url = "http://example.com/images/geometry_01.png"
-        val extension = ".png"
-        val md = MessageDigest.getInstance("MD5")
-        val expectedHash = md.digest(url.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-        val expectedFileName = "$expectedHash$extension"
+    fun testSchemeTwoKindergartenQuestionsParsed() {
+        val jsonFile = File("src/main/assets/default_questions.json")
+        val jsonContent = jsonFile.readText(Charsets.UTF_8)
+        val questions: List<Question> = Gson().fromJson(jsonContent, object : TypeToken<List<Question>>() {}.type)
 
-        assertTrue(expectedFileName.endsWith(".png"))
-        assertEquals(36, expectedFileName.length) // 32 hex chars + 4 (.png)
+        val schemeTwoQ = questions.find { it.optionAImageUrl != null }
+        assertNotNull("Should contain at least one question with option images (Scheme 2)", schemeTwoQ)
+        assertEquals("幼儿启蒙", schemeTwoQ?.subject)
+        assertNotNull(schemeTwoQ?.optionAImageUrl)
+        assertNotNull(schemeTwoQ?.optionBImageUrl)
+        assertNotNull(schemeTwoQ?.optionCImageUrl)
+        assertNotNull(schemeTwoQ?.optionDImageUrl)
+        assertEquals("A", schemeTwoQ?.correctAnswer)
+    }
+
+    @Test
+    fun testStemImageCountingQuestionParsed() {
+        val jsonFile = File("src/main/assets/default_questions.json")
+        val jsonContent = jsonFile.readText(Charsets.UTF_8)
+        val questions: List<Question> = Gson().fromJson(jsonContent, object : TypeToken<List<Question>>() {}.type)
+
+        val countingQ = questions.find { it.questionText.contains("【数一数】") }
+        assertNotNull("Should contain counting question", countingQ)
+        assertNotNull(countingQ?.questionImageUrl)
+        assertEquals("幼儿启蒙", countingQ?.subject)
     }
 }

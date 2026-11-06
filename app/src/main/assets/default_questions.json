@@ -64,5 +64,31 @@
     "optionD": "汉朝",
     "correctAnswer": "C",
     "explanation": "公元前221年，秦王嬴政灭六国统一天下，建立了中国历史上第一个统一的多民族中央集权封建国家——秦朝。故选C。"
+  },
+  {
+    "subject": "幼儿启蒙",
+    "questionText": "【数一数】看图数一数，草地上共有几个小朋友在欢快地做游戏？",
+    "questionImageUrl": "https://img.icons8.com/color/360/children.png",
+    "optionA": "2个",
+    "optionB": "3个",
+    "optionC": "4个",
+    "optionD": "5个",
+    "correctAnswer": "B",
+    "explanation": "草地上共有3个小朋友在快乐地玩耍。小朋友们数得很棒！"
+  },
+  {
+    "subject": "幼儿启蒙",
+    "questionText": "【看图选物】请小朋友认一认，下面选项中哪一个是红彤彤的苹果？",
+    "questionImageUrl": null,
+    "optionA": "苹果",
+    "optionB": "香蕉",
+    "optionC": "西瓜",
+    "optionD": "葡萄",
+    "optionAImageUrl": "https://img.icons8.com/color/180/apple.png",
+    "optionBImageUrl": "https://img.icons8.com/color/180/banana.png",
+    "optionCImageUrl": "https://img.icons8.com/color/180/watermelon.png",
+    "optionDImageUrl": "https://img.icons8.com/color/180/grapes.png",
+    "correctAnswer": "A",
+    "explanation": "A选项是红彤彤的大苹果！B是香蕉，C是西瓜，D是葡萄。"
   }
 ]
