@@ -11,6 +11,7 @@ import com.parent.tvlock.db.AppDatabaseHelper
 import com.parent.tvlock.db.dao.AnswerRecordDao
 import com.parent.tvlock.ui.adapter.AnswerRecordAdapter
 import com.parent.tvlock.util.FocusHelper
+import com.parent.tvlock.util.ParentAuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,6 +51,14 @@ class QuestionHistoryActivity : AppCompatActivity() {
             val correct = stats.second
             val accuracy = if (total > 0) (correct * 100 / total) else 0
             tvHeaderStats.text = "今日已答 $total 题 · 答对 $correct 题 · 正确率 $accuracy%"
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isFinishing) {
+            ParentAuthManager.revokePass()
+            finish()
         }
     }
 }

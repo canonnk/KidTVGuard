@@ -13,8 +13,10 @@ import com.parent.tvlock.db.AppDatabaseHelper
 import com.parent.tvlock.db.dao.WrongQuestionDao
 import com.parent.tvlock.db.model.WrongQuestion
 import com.parent.tvlock.overlay.OverlayLockManager
+import com.parent.tvlock.overlay.QuestionOverlayView
 import com.parent.tvlock.ui.adapter.WrongQuestionAdapter
 import com.parent.tvlock.util.FocusHelper
+import com.parent.tvlock.util.ParentAuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -86,6 +88,14 @@ class WrongQuestionsActivity : AppCompatActivity() {
             .setTitle(if (isVoice) "错题详情 · ${q?.subject ?: "综合"} (语音题)" else "错题详情 · ${q?.subject ?: "综合"}")
             .setMessage(details)
             .setPositiveButton("立即重练此题") { _, _ ->
+                if (isVoice && !QuestionOverlayView.isVoiceQuestionEligible(this)) {
+                    Toast.makeText(
+                        this,
+                        "当前未授麦克风权限、未联网或未配置百度语音 Key，暂无法重练此语音题",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@setPositiveButton
+                }
                 val lockManager = OverlayLockManager.getInstance(this)
                 if (lockManager.canDrawOverlays()) {
                     lockManager.showLock(targetQuestionId = wrongQuestion.questionId)
@@ -95,5 +105,13 @@ class WrongQuestionsActivity : AppCompatActivity() {
             }
             .setNegativeButton("关闭", null)
             .show()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isFinishing) {
+            ParentAuthManager.revokePass()
+            finish()
+        }
     }
 }

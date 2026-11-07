@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var passwordOverlayView: ParentPasswordOverlayView
     private var isParentAuthenticated = false
     private var isNavigatingToSettings = false
+    private var hasAutoPromptedMicPermission = false
 
     private lateinit var tvServiceStatus: TextView
     private lateinit var btnPermissionOverlay: View
@@ -129,14 +130,20 @@ class MainActivity : AppCompatActivity() {
         }
         updateIntervalSelectionUi()
 
-        // 方式 A：鉴权成功进入主面板后，若尚未授予麦克风权限，主动弹出系统授权请求
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        // 方式 A：鉴权成功进入主面板后，若尚未授予麦克风权限，首次主动弹出系统授权请求
+        if (!hasAutoPromptedMicPermission &&
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+        ) {
+            hasAutoPromptedMicPermission = true
+            isNavigatingToSettings = true
+            ParentAuthManager.grantTemporaryPass(5)
             ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.RECORD_AUDIO), RC_RECORD_AUDIO)
         }
     }
 
     private fun lockMainActivity() {
         isParentAuthenticated = false
+        hasAutoPromptedMicPermission = false
         mainScroll.visibility = View.GONE
         passwordOverlayView.visibility = View.VISIBLE
         passwordOverlayView.resetInput()
@@ -325,12 +332,18 @@ class MainActivity : AppCompatActivity() {
 
         // 数据审计看板入口
         findViewById<View>(R.id.btnCardAnswerHistory).setOnClickListener {
+            isNavigatingToSettings = true
+            ParentAuthManager.grantTemporaryPass(5)
             startActivity(Intent(this, QuestionHistoryActivity::class.java))
         }
         findViewById<View>(R.id.btnCardWrongBook).setOnClickListener {
+            isNavigatingToSettings = true
+            ParentAuthManager.grantTemporaryPass(5)
             startActivity(Intent(this, WrongQuestionsActivity::class.java))
         }
         findViewById<View>(R.id.btnCardAppUsage).setOnClickListener {
+            isNavigatingToSettings = true
+            ParentAuthManager.grantTemporaryPass(5)
             startActivity(Intent(this, AppUsageStatsActivity::class.java))
         }
     }
@@ -581,6 +594,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestMicrophonePermission() {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            isNavigatingToSettings = true
+            ParentAuthManager.grantTemporaryPass(5)
             ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.RECORD_AUDIO), RC_RECORD_AUDIO)
         } else {
             Toast.makeText(this, "麦克风语音录入权限已正常开启", Toast.LENGTH_SHORT).show()
@@ -590,6 +605,7 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == RC_RECORD_AUDIO) {
+            isNavigatingToSettings = false
             checkPermissionsAndUpdateUi()
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "麦克风录音权限已成功开启", Toast.LENGTH_SHORT).show()

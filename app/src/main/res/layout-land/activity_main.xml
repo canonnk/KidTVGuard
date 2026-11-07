@@ -1,17 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/ios_bg_black"
-    android:clipChildren="false"
-    android:clipToPadding="false"
-    android:orientation="horizontal"
-    android:paddingStart="40dp"
-    android:paddingTop="28dp"
-    android:paddingEnd="40dp"
-    android:paddingBottom="28dp"
     tools:context=".MainActivity">
+
+    <LinearLayout
+        android:id="@+id/mainScroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/ios_bg_black"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="horizontal"
+        android:paddingStart="40dp"
+        android:paddingTop="28dp"
+        android:paddingEnd="40dp"
+        android:paddingBottom="28dp"
+        android:visibility="gone">
 
     <!-- ==================== 左侧：Apple Screen Time 主卡片与状态 ==================== -->
     <LinearLayout
@@ -364,6 +372,67 @@
                         android:textSize="20sp"
                         android:textStyle="bold" />
                 </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="58dp"
+                    android:background="@color/ios_separator" />
+
+                <!-- 行 4：麦克风录音权限 -->
+                <LinearLayout
+                    android:id="@+id/btnPermissionMic"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:background="@drawable/selector_ios_row"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="14dp">
+
+                    <TextView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_ios_badge_blue"
+                        android:gravity="center"
+                        android:text="🎙️"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:layout_weight="1"
+                        android:text="麦克风语音录入权限"
+                        android:textColor="@color/ios_text_primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvStatusMic"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_ios_status_green"
+                        android:paddingStart="10dp"
+                        android:paddingTop="3dp"
+                        android:paddingEnd="10dp"
+                        android:paddingBottom="3dp"
+                        android:text="已授权"
+                        android:textColor="@color/ios_green"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="›"
+                        android:textColor="@color/ios_text_tertiary"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
             </LinearLayout>
 
             <TextView
@@ -372,7 +441,7 @@
                 android:paddingStart="12dp"
                 android:paddingTop="6dp"
                 android:paddingBottom="18dp"
-                android:text="开启无障碍与设备管理员后，电视将在开机时自动保活并拦截返回/Home键逃逸。"
+                android:text="开启上述权限后，电视开机将自动静默守护、支持看图语音题互动，并阻止未授权卸载与按键逃逸。"
                 android:textColor="@color/ios_text_tertiary"
                 android:textSize="12sp" />
 
@@ -700,7 +769,7 @@
                 android:paddingStart="12dp"
                 android:paddingTop="6dp"
                 android:paddingBottom="18dp"
-                android:text="默认初始密码为 888888，用于孩子试图打开系统设置或卸载界面时的鉴权拦截。"
+                android:text="用于家长进入控制中心、打开系统设置或卸载界面时的安全鉴权拦截。"
                 android:textColor="@color/ios_text_tertiary"
                 android:textSize="12sp" />
 
@@ -1218,4 +1287,12 @@
                 android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
-</LinearLayout>
+    </LinearLayout>
+
+    <com.parent.tvlock.overlay.ParentPasswordOverlayView
+        android:id="@+id/passwordOverlayView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="visible" />
+
+</FrameLayout>

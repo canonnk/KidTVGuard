@@ -13,6 +13,7 @@ import com.parent.tvlock.db.dao.AppUsageRecordDao
 import com.parent.tvlock.ui.adapter.AppUsageAdapter
 import com.parent.tvlock.util.DateTimeUtils
 import com.parent.tvlock.util.FocusHelper
+import com.parent.tvlock.util.ParentAuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -98,6 +99,14 @@ class AppUsageStatsActivity : AppCompatActivity() {
                 }
                 .setNegativeButton("取消", null)
                 .show()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isFinishing) {
+            ParentAuthManager.revokePass()
+            finish()
         }
     }
 }

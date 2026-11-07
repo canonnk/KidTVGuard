@@ -65,6 +65,55 @@ class QuestionOverlayView @JvmOverloads constructor(
             KeyEvent.KEYCODE_TV,
             KeyEvent.KEYCODE_TV_INPUT
         )
+
+        /**
+         * 智能检查当前环境是否满足运行语音认读题的所有必要条件
+         * 必须同时满足：
+         * 1. 麦克风 RECORD_AUDIO 权限已授予；
+         * 2. 网络已连接（百度语音识别是云端接口，断网无法识别）；
+         * 3. 百度语音 API Key 与 Secret Key 已有效配置（非空且非出厂默认占位符）。
+         */
+        fun isVoiceQuestionEligible(context: Context): Boolean {
+            // 1. 录音权限检查
+            val hasMicPermission = ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasMicPermission) {
+                L.d("Voice question not eligible: RECORD_AUDIO permission not granted.")
+                return false
+            }
+
+            // 2. 网络连通性检查
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val isNetworkConnected = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = cm?.activeNetwork ?: return false
+                val caps = cm.getNetworkCapabilities(network) ?: return false
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            } else {
+                @Suppress("DEPRECATION")
+                cm?.activeNetworkInfo?.isConnected == true
+            }
+            if (!isNetworkConnected) {
+                L.d("Voice question not eligible: Device is offline.")
+                return false
+            }
+
+            // 3. 百度云语音鉴权 Key 有效性检查（排除默认测试占位符）
+            val pref = PreferenceManager.getInstance(context)
+            val apiKey = pref.baiduAsrApiKey.trim()
+            val secretKey = pref.baiduAsrSecretKey.trim()
+            if (apiKey.isBlank() || secretKey.isBlank()) {
+                L.d("Voice question not eligible: Baidu API Key or Secret Key is blank.")
+                return false
+            }
+            if (apiKey == PreferenceManager.DEFAULT_BAIDU_ASR_API_KEY || secretKey == PreferenceManager.DEFAULT_BAIDU_ASR_SECRET_KEY) {
+                L.d("Voice question not eligible: Baidu API Key is placeholder dummy key.")
+                return false
+            }
+
+            return true
+        }
     }
 
     private val viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -291,52 +340,8 @@ class QuestionOverlayView @JvmOverloads constructor(
         this.answerResultListener = listener
     }
 
-    /**
-     * 智能检查当前环境是否满足运行语音认读题的所有必要条件
-     * 必须同时满足：
-     * 1. 麦克风 RECORD_AUDIO 权限已授予；
-     * 2. 网络已连接（百度语音识别是云端接口，断网无法识别）；
-     * 3. 百度语音 API Key 与 Secret Key 已有效配置（非空且非出厂默认占位符）。
-     */
     private fun isVoiceQuestionEligible(): Boolean {
-        // 1. 录音权限检查
-        val hasMicPermission = ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!hasMicPermission) {
-            L.d("Voice question not eligible: RECORD_AUDIO permission not granted.")
-            return false
-        }
-
-        // 2. 网络连通性检查
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val isNetworkConnected = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val network = cm?.activeNetwork ?: return false
-            val caps = cm.getNetworkCapabilities(network) ?: return false
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        } else {
-            @Suppress("DEPRECATION")
-            cm?.activeNetworkInfo?.isConnected == true
-        }
-        if (!isNetworkConnected) {
-            L.d("Voice question not eligible: Device is offline.")
-            return false
-        }
-
-        // 3. 百度云语音鉴权 Key 有效性检查（排除默认测试占位符）
-        val apiKey = preferenceManager.baiduAsrApiKey.trim()
-        val secretKey = preferenceManager.baiduAsrSecretKey.trim()
-        if (apiKey.isBlank() || secretKey.isBlank()) {
-            L.d("Voice question not eligible: Baidu API Key or Secret Key is blank.")
-            return false
-        }
-        if (apiKey == PreferenceManager.DEFAULT_BAIDU_ASR_API_KEY || secretKey == PreferenceManager.DEFAULT_BAIDU_ASR_SECRET_KEY) {
-            L.d("Voice question not eligible: Baidu API Key is placeholder dummy key.")
-            return false
-        }
-
-        return true
+        return isVoiceQuestionEligible(context)
     }
 
     /**
@@ -354,11 +359,11 @@ class QuestionOverlayView @JvmOverloads constructor(
             val isVoiceEligible = !forceChoiceOnly && isVoiceQuestionEligible()
 
             val question = withContext(Dispatchers.IO) {
-                // 若指定了初始重练题目（如从错题本点击进入），优先加载该指定题
+                // 若指定了初始重练题目（如从错题本点击进入），优先加载该指定题（需同时满足语音题环境可用性）
                 initialQuestionId?.let { designatedId ->
                     initialQuestionId = null
                     val designated = questionDao.getQuestionById(designatedId)
-                    if (designated != null) {
+                    if (designated != null && (isVoiceEligible || !designated.isVoiceType)) {
                         return@withContext Pair(designated, true)
                     }
                 }
