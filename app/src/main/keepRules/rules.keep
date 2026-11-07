@@ -4,9 +4,14 @@
 # For more details, see
 #   https://d.android.com/r/tools/r8/keep-rules
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 1. 保持泛型签名、注解和内部类结构（防止 TypeToken 反序列化为 LinkedTreeMap）
+-keepattributes Signature, InnerClasses, EnclosingMethod, RuntimeVisibleAnnotations
+
+# 2. Gson 核心反射类与 TypeToken 保留
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keep class com.google.gson.** { *; }
+
+# 3. 业务数据模型类及成员完全保留（供 Gson 与 SQLite DAO 安全访问）
+-keep class com.parent.tvlock.db.model.** { *; }
+-keepclassmembers class com.parent.tvlock.db.model.** { *; }

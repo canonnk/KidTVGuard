@@ -78,18 +78,24 @@ class AppUsageRecordDao(private val dbHelper: AppDatabaseHelper) {
     }
 
     /**
-     * 获取今天使用电视应用的总秒数
+     * 获取指定日期使用电视应用的总秒数
      */
-    fun getTodayTotalUsageSeconds(): Long {
-        val today = DateTimeUtils.getTodayDate()
+    fun getTotalUsageSeconds(date: String): Long {
         val db = dbHelper.readableDatabase
         val cursor = db.rawQuery(
             "SELECT SUM(durationSeconds) FROM ${AppDatabaseHelper.TABLE_APP_USAGE_RECORDS} WHERE recordDate = ?",
-            arrayOf(today)
+            arrayOf(date)
         )
         val total = if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else 0L
         cursor.close()
         return total
+    }
+
+    /**
+     * 获取今天使用电视应用的总秒数
+     */
+    fun getTodayTotalUsageSeconds(): Long {
+        return getTotalUsageSeconds(DateTimeUtils.getTodayDate())
     }
 
     /**

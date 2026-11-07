@@ -22,7 +22,7 @@ class AppUsageAdapter(
         val tvLaunchCount: TextView = view.findViewById(R.id.tvLaunchCount)
 
         init {
-            FocusHelper.setupFocusScale(view)
+            FocusHelper.setupCardRowFocus(view)
         }
     }
 

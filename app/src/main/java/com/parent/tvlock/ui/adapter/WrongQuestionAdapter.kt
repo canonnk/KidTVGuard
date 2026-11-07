@@ -23,7 +23,7 @@ class WrongQuestionAdapter(
         val tvExplanation: TextView = view.findViewById(R.id.tvWrongExplanation)
 
         init {
-            FocusHelper.setupFocusScale(view)
+            FocusHelper.setupCardRowFocus(view)
         }
     }
 
@@ -37,7 +37,9 @@ class WrongQuestionAdapter(
         val context = holder.itemView.context
         val question = item.question
 
-        holder.tvSubject.text = question?.subject ?: "错题"
+        val isVoice = question?.isVoiceType == true
+        val subject = question?.subject ?: "错题"
+        holder.tvSubject.text = if (isVoice) "$subject · 语音认读" else subject
         holder.tvWrongCount.text = "累计做错：${item.wrongCount} 次"
 
         val isMastered = item.isMastered == 1
@@ -51,7 +53,8 @@ class WrongQuestionAdapter(
 
         holder.tvQuestionText.text = question?.questionText ?: "题目 #${item.questionId}"
         val exp = question?.explanation ?: "暂无解析"
-        holder.tvExplanation.text = "解析：$exp (最近选错：${item.lastWrongAnswer})"
+        val wrongAnsDesc = if (isVoice) "最近识别：\"${item.lastWrongAnswer}\"" else "最近选错：${item.lastWrongAnswer}"
+        holder.tvExplanation.text = "解析：$exp ($wrongAnsDesc)"
 
         holder.itemView.setOnClickListener {
             onItemClick?.invoke(item)

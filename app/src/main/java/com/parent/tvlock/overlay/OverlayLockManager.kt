@@ -28,6 +28,7 @@ class OverlayLockManager private constructor(private val context: Context) {
 
     private var currentOverlayView: View? = null
     private var audioFocusRequest: AudioFocusRequest? = null
+    private var isMutedByLock: Boolean = false
     var isShowingLock: Boolean = false
         private set
 
@@ -54,10 +55,10 @@ class OverlayLockManager private constructor(private val context: Context) {
     }
 
     /**
-     * 展示锁屏悬浮窗（断电死锁与倒计时结束统一入口）
+     * 展示锁屏悬浮窗（断电死锁与倒计时结束统一入口，可指定题目重练）
      */
     @Synchronized
-    fun showLock() {
+    fun showLock(targetQuestionId: Long? = null) {
         if (isShowingLock && currentOverlayView != null) {
             L.d("Lock overlay is already showing.")
             return
@@ -71,7 +72,7 @@ class OverlayLockManager private constructor(private val context: Context) {
         }
 
         try {
-            L.i("Showing TV lock overlay...")
+            L.i("Showing TV lock overlay (targetQuestionId=$targetQuestionId)...")
             @Suppress("DEPRECATION")
             val layoutParams = WindowManager.LayoutParams().apply {
                 width = WindowManager.LayoutParams.MATCH_PARENT
@@ -89,8 +90,8 @@ class OverlayLockManager private constructor(private val context: Context) {
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
             }
 
-            // 在阶段3，先挂载一个全屏容器视图（阶段4会无缝替换为完整答题 QuestionOverlayView）
-            val lockView = QuestionOverlayView(context)
+            // 挂载完整答题 QuestionOverlayView
+            val lockView = QuestionOverlayView(context, initialQuestionId = targetQuestionId)
             lockView.setOnAnswerResultListener(object : QuestionOverlayView.OnAnswerResultListener {
                 override fun onAnswerCorrect() {
                     L.i("User answered correctly! Dismissing lock.")
@@ -171,17 +172,22 @@ class OverlayLockManager private constructor(private val context: Context) {
             // 2. 兜底模拟分发系统全局媒体暂停按键事件 (KEYCODE_MEDIA_PAUSE)
             audioManager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
             audioManager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
-            L.i("Dispatched media pause key and seized audio focus.")
+
+            // 3. 强制全局静音媒体声道（STREAM_MUSIC），彻底杜绝不遵守音频焦点的播放器或电视直播出声
+            muteTvAudio()
+
+            L.i("Dispatched media pause key, seized audio focus, and muted STREAM_MUSIC.")
         } catch (e: Exception) {
             L.w("Failed to pause media playback", tr = e)
         }
     }
 
     /**
-     * 解锁后释放音频焦点
+     * 解锁后释放音频焦点并恢复媒体声音
      */
     private fun resumeMediaPlayback() {
         try {
+            unmuteTvAudio()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
                 audioFocusRequest = null
@@ -189,9 +195,47 @@ class OverlayLockManager private constructor(private val context: Context) {
                 @Suppress("DEPRECATION")
                 audioManager.abandonAudioFocus(null)
             }
-            L.i("Released audio focus upon unlock.")
+            L.i("Released audio focus and restored volume upon unlock.")
         } catch (e: Exception) {
             L.w("Failed to release audio focus", tr = e)
+        }
+    }
+
+    /**
+     * 锁屏期间全局强制静音电视媒体声道（STREAM_MUSIC）
+     */
+    private fun muteTvAudio() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.setStreamMute(AudioManager.STREAM_MUSIC, true)
+            }
+            isMutedByLock = true
+            L.i("Muted TV STREAM_MUSIC volume for lock overlay.")
+        } catch (e: Exception) {
+            L.w("Failed to mute STREAM_MUSIC for lock overlay", tr = e)
+        }
+    }
+
+    /**
+     * 解锁后恢复电视媒体声道音量
+     */
+    private fun unmuteTvAudio() {
+        if (isMutedByLock) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+                } else {
+                    @Suppress("DEPRECATION")
+                    audioManager.setStreamMute(AudioManager.STREAM_MUSIC, false)
+                }
+                isMutedByLock = false
+                L.i("Restored TV STREAM_MUSIC volume upon unlock.")
+            } catch (e: Exception) {
+                L.w("Failed to unmute STREAM_MUSIC upon unlock", tr = e)
+            }
         }
     }
 }

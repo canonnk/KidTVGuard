@@ -24,7 +24,7 @@ class AnswerRecordAdapter(
         val tvDuration: TextView = view.findViewById(R.id.tvRecordDuration)
 
         init {
-            FocusHelper.setupFocusScale(view)
+            FocusHelper.setupCardRowFocus(view)
         }
     }
 

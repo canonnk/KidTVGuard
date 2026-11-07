@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/mainScroll"
+    android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/ios_bg_black"
-    android:clipChildren="false"
-    android:clipToPadding="false"
-    android:fillViewport="true"
     tools:context=".MainActivity">
+
+    <ScrollView
+        android:id="@+id/mainScroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/ios_bg_black"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:visibility="gone">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -328,6 +335,67 @@
                     android:textSize="18sp"
                     android:textStyle="bold" />
             </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="0.6dp"
+                android:layout_marginStart="52dp"
+                android:background="@color/ios_separator" />
+
+            <!-- 行 4：麦克风录音权限 -->
+            <LinearLayout
+                android:id="@+id/btnPermissionMic"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:background="@drawable/selector_ios_row"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="10dp"
+                android:paddingEnd="12dp">
+
+                <TextView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:background="@drawable/bg_ios_badge_blue"
+                    android:gravity="center"
+                    android:text="🎙️"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:text="麦克风语音录入权限"
+                    android:textColor="@color/ios_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvStatusMic"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_ios_status_green"
+                    android:paddingStart="8dp"
+                    android:paddingTop="2dp"
+                    android:paddingEnd="8dp"
+                    android:paddingBottom="2dp"
+                    android:text="已授权"
+                    android:textColor="@color/ios_green"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="›"
+                    android:textColor="@color/ios_text_tertiary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
 
         <TextView
@@ -335,7 +403,7 @@
             android:layout_height="wrap_content"
             android:paddingStart="12dp"
             android:paddingTop="6dp"
-            android:text="开启上述权限后，电视开机将自动静默守护，并阻止未授权卸载与按键逃逸。"
+            android:text="开启上述权限后，电视开机将自动静默守护、支持看图语音题互动，并阻止未授权卸载与按键逃逸。"
             android:textColor="@color/ios_text_tertiary"
             android:textSize="12sp" />
 
@@ -1161,4 +1229,12 @@
             android:textColor="@color/ios_text_tertiary"
             android:textSize="12sp" />
     </LinearLayout>
-</ScrollView>
+    </ScrollView>
+
+    <com.parent.tvlock.overlay.ParentPasswordOverlayView
+        android:id="@+id/passwordOverlayView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="visible" />
+
+</FrameLayout>

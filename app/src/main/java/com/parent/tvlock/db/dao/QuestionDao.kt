@@ -161,12 +161,16 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
 
     /**
      * 随机抽取一道未答对的题目；如果全部答对过，则从全题库随机抽取
+     * @param onlyChoice 是否仅抽取选择题（当未授权麦克风、断网或未配置百度语音 Key 时自动降级锁定选择题）
      */
-    fun getRandomQuestionForLock(): Question? {
+    fun getRandomQuestionForLock(onlyChoice: Boolean = false): Question? {
         val db = dbHelper.readableDatabase
+        val typeFilter = if (onlyChoice) "AND questionType = '${Question.TYPE_CHOICE}'" else ""
+        val typeWhere = if (onlyChoice) "WHERE questionType = '${Question.TYPE_CHOICE}'" else ""
+
         // 1. 优先抽取未答对的题
         var cursor = db.rawQuery(
-            "SELECT * FROM ${AppDatabaseHelper.TABLE_QUESTIONS} WHERE isAnsweredCorrectly = 0 ORDER BY RANDOM() LIMIT 1",
+            "SELECT * FROM ${AppDatabaseHelper.TABLE_QUESTIONS} WHERE isAnsweredCorrectly = 0 $typeFilter ORDER BY RANDOM() LIMIT 1",
             null
         )
         if (cursor.moveToFirst()) {
@@ -176,9 +180,9 @@ class QuestionDao(private val dbHelper: AppDatabaseHelper) {
         }
         cursor.close()
 
-        // 2. 若所有题目都答对过，则从全部题库中随机抽取一道
+        // 2. 若所有题目都答对过，则从符合条件的全部题库中随机抽取一道
         cursor = db.rawQuery(
-            "SELECT * FROM ${AppDatabaseHelper.TABLE_QUESTIONS} ORDER BY RANDOM() LIMIT 1",
+            "SELECT * FROM ${AppDatabaseHelper.TABLE_QUESTIONS} $typeWhere ORDER BY RANDOM() LIMIT 1",
             null
         )
         if (cursor.moveToFirst()) {

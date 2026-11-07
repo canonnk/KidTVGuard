@@ -30,6 +30,8 @@ class ParentPasswordOverlayView @JvmOverloads constructor(
     private var authListener: OnPasswordAuthListener? = null
     private val preferenceManager = PreferenceManager.getInstance(context)
 
+    private val tvPasswordTitle: TextView?
+    private val tvPasswordSubtitle: TextView?
     private val tvPinDisplay: TextView
     private val tvPinError: TextView
     private val currentPin = StringBuilder()
@@ -40,6 +42,8 @@ class ParentPasswordOverlayView @JvmOverloads constructor(
         isFocusable = true
         isFocusableInTouchMode = true
 
+        tvPasswordTitle = view.findViewById(R.id.tvPasswordTitle)
+        tvPasswordSubtitle = view.findViewById(R.id.tvPasswordSubtitle)
         tvPinDisplay = view.findViewById(R.id.tvPinDisplay)
         tvPinError = view.findViewById(R.id.tvPinError)
 
@@ -91,6 +95,32 @@ class ParentPasswordOverlayView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * 自定义标题与副标题文案（用于进入主程序鉴权与系统设置拦截等不同场景）
+     */
+    fun setCustomPrompt(title: String? = null, subtitle: String? = null) {
+        title?.let { tvPasswordTitle?.text = it }
+        subtitle?.let { tvPasswordSubtitle?.text = it }
+    }
+
+    /**
+     * 重置已输入的 PIN 码并聚焦首个数字键
+     */
+    fun resetInput() {
+        currentPin.clear()
+        updatePinDisplay()
+        focusFirstKey()
+    }
+
+    /**
+     * 遥控器焦点快速定位至按键 1
+     */
+    fun focusFirstKey() {
+        findViewById<View>(R.id.btnKey1)?.let {
+            FocusHelper.requestFocusSafe(it)
+        }
+    }
+
     private fun appendDigit(digit: String) {
         if (currentPin.length < 6) {
             currentPin.append(digit)
@@ -136,8 +166,10 @@ class ParentPasswordOverlayView @JvmOverloads constructor(
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-            // 返回键作为取消处理，退回桌面
-            authListener?.onAuthCancelled()
+            // 返回键作为取消处理，退回桌面（仅在 ACTION_UP 触发，避免 ACTION_DOWN / UP 重复回调）
+            if (event.action == KeyEvent.ACTION_UP) {
+                authListener?.onAuthCancelled()
+            }
             return true
         }
         return super.dispatchKeyEvent(event)

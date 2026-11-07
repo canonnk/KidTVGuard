@@ -75,6 +75,17 @@ class TvAccessibilityService : AccessibilityService() {
             "com.android.launcher3",
             "com.android.systemui"
         )
+
+        // 锁屏答题期间或敏感设置密码拦截期间严禁响应的遥控器逃逸按键集合
+        private val ESCAPE_KEY_CODES = setOf(
+            KeyEvent.KEYCODE_HOME,
+            KeyEvent.KEYCODE_BACK,
+            KeyEvent.KEYCODE_APP_SWITCH,
+            KeyEvent.KEYCODE_SETTINGS,
+            KeyEvent.KEYCODE_MENU,
+            KeyEvent.KEYCODE_TV,
+            KeyEvent.KEYCODE_TV_INPUT
+        )
     }
 
     override fun onServiceConnected() {
@@ -90,14 +101,14 @@ class TvAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * 关键：底层按键拦截（锁屏期间强制拦截 Home 键与返回键）
+     * 关键：底层按键拦截（锁屏答题期间或敏感设置密码拦截期间强制拦截所有逃逸按键）
      */
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        if (preferenceManager.isLocked) {
+        if (preferenceManager.isLocked || isPasswordOverlayShowing) {
             val keyCode = event.keyCode
-            if (keyCode == KeyEvent.KEYCODE_HOME || keyCode == KeyEvent.KEYCODE_BACK) {
-                L.d("Intercepted key event in AccessibilityService: $keyCode")
-                return true // 拦截并消耗按键，防止孩子按 Home 逃逸锁屏
+            if (ESCAPE_KEY_CODES.contains(keyCode)) {
+                L.d("Intercepted escape key event in AccessibilityService: $keyCode")
+                return true // 拦截并消耗按键，防止孩子切出锁屏或绕过拦截
             }
         }
         return super.onKeyEvent(event)
@@ -239,12 +250,12 @@ class TvAccessibilityService : AccessibilityService() {
      * 电视应用活动使用时长记录追踪算法
      */
     private fun trackAppUsage(newPkgName: String) {
-        // 如果是本应用自身或未发生应用切换，则忽略
-        if (newPkgName == packageName || newPkgName == currentForegroundPkg) return
+        // 未发生应用切换，则忽略
+        if (newPkgName == currentForegroundPkg) return
 
         val currentTime = System.currentTimeMillis()
 
-        // 结算前一个应用的使用时长
+        // 结算前一个应用的使用时长（切到任何新界面时，只要前一个有在计时的应用，立即结算入库）
         currentForegroundPkg?.let { prevPkg ->
             if (currentStartTime > 0) {
                 val durationSeconds = (currentTime - currentStartTime) / 1000L
@@ -270,14 +281,14 @@ class TvAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 开启新应用的时长统计（过滤桌面与输入法等白名单）
-        if (!isIgnoredPackage(newPkgName)) {
+        // 开启新应用的时长统计（过滤本应用自身、桌面与输入法等白名单）
+        if (newPkgName != packageName && !isIgnoredPackage(newPkgName)) {
             currentForegroundPkg = newPkgName
             currentForegroundAppName = getAppNameForPackage(newPkgName)
             currentStartTime = currentTime
             L.d("Tracking new foreground TV app: $currentForegroundAppName ($newPkgName)")
         } else {
-            // 切回了电视桌面或输入法，重置统计指针
+            // 切回了本应用、电视桌面或输入法，重置统计指针
             currentForegroundPkg = null
             currentForegroundAppName = null
             currentStartTime = 0L

@@ -104,5 +104,25 @@ class SyncManagerTest {
         // 4. 错误回答
         val res4 = matcher.match("大香蕉", "苹果", "红苹果,大苹果")
         assertFalse("Should fail for mismatched word", res4.isMatched)
+
+        // 5. 空串/纯前缀语气词漏洞测试（严防清洗为空后 100% 必过漏洞）
+        val res5 = matcher.match("这是呀", "苹果", "大苹果,红苹果")
+        assertFalse("Should fail when only prefix and tone words spoken", res5.isMatched)
+
+        val res6 = matcher.match("这是一个", "苹果", "大苹果,红苹果")
+        assertFalse("Should fail when only prefix spoken", res6.isMatched)
+
+        val res7 = matcher.match("呀啊哦", "苹果", "大苹果,红苹果")
+        assertFalse("Should fail when only tone particles spoken", res7.isMatched)
+
+        // 6. 单字/通用修饰词反向包含漏洞测试（严防单字投机命中）
+        val res8 = matcher.match("大", "苹果", "大苹果,红苹果,一个小苹果")
+        assertFalse("Should fail when only single adjective spoken", res8.isMatched)
+
+        val res9 = matcher.match("红", "苹果", "大苹果,红苹果,一个小苹果")
+        assertFalse("Should fail when only single color spoken", res9.isMatched)
+
+        val res10 = matcher.match("一个", "苹果", "大苹果,红苹果,一个小苹果")
+        assertFalse("Should fail when only modifier spoken", res10.isMatched)
     }
 }

@@ -11,8 +11,11 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
+import android.text.InputFilter
+import android.text.InputType
 import android.view.View
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -25,6 +28,7 @@ import com.parent.tvlock.db.dao.AnswerRecordDao
 import com.parent.tvlock.db.dao.AppUsageRecordDao
 import com.parent.tvlock.db.dao.WrongQuestionDao
 import com.parent.tvlock.net.SyncManager
+import com.parent.tvlock.overlay.ParentPasswordOverlayView
 import com.parent.tvlock.service.LockForegroundService
 import com.parent.tvlock.service.TvAccessibilityService
 import com.parent.tvlock.ui.AppUsageStatsActivity
@@ -48,6 +52,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var preferenceManager: PreferenceManager
     private lateinit var syncManager: SyncManager
 
+    private lateinit var mainScroll: View
+    private lateinit var passwordOverlayView: ParentPasswordOverlayView
+    private var isParentAuthenticated = false
+    private var isNavigatingToSettings = false
+
     private lateinit var tvServiceStatus: TextView
     private lateinit var btnPermissionOverlay: View
     private lateinit var tvStatusOverlay: TextView
@@ -55,6 +64,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStatusAccessibility: TextView
     private lateinit var btnPermissionDeviceAdmin: View
     private lateinit var tvStatusDeviceAdmin: TextView
+    private lateinit var btnPermissionMic: View
+    private lateinit var tvStatusMic: TextView
 
     private lateinit var tvCurrentIntervalText: TextView
     private lateinit var tvCurrentServerUrl: TextView
@@ -87,6 +98,27 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!isParentAuthenticated) {
+            mainScroll.visibility = View.GONE
+            passwordOverlayView.visibility = View.VISIBLE
+            passwordOverlayView.focusFirstKey()
+            return
+        }
+
+        if (isNavigatingToSettings) {
+            isNavigatingToSettings = false
+        }
+
+        // 若临时通行证已过期，重新强制锁屏
+        if (!ParentAuthManager.hasActivePass()) {
+            lockMainActivity()
+            return
+        }
+
+        onAuthenticated()
+    }
+
+    private fun onAuthenticated() {
         checkPermissionsAndUpdateUi()
         refreshDashboardBriefStats()
         tvCurrentServerUrl.text = preferenceManager.syncServerUrl
@@ -96,9 +128,50 @@ class MainActivity : AppCompatActivity() {
             tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
         }
         updateIntervalSelectionUi()
+
+        // 方式 A：鉴权成功进入主面板后，若尚未授予麦克风权限，主动弹出系统授权请求
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.RECORD_AUDIO), RC_RECORD_AUDIO)
+        }
+    }
+
+    private fun lockMainActivity() {
+        isParentAuthenticated = false
+        mainScroll.visibility = View.GONE
+        passwordOverlayView.visibility = View.VISIBLE
+        passwordOverlayView.resetInput()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isNavigatingToSettings) {
+            ParentAuthManager.revokePass()
+            lockMainActivity()
+        }
     }
 
     private fun initViews() {
+        mainScroll = findViewById(R.id.mainScroll)
+        passwordOverlayView = findViewById(R.id.passwordOverlayView)
+
+        passwordOverlayView.setCustomPrompt(
+            title = "🔒 家长控制中心 · 身份验证",
+            subtitle = "请输入 6 位家长密码以管理限额与设置"
+        )
+        passwordOverlayView.setOnPasswordAuthListener(object : ParentPasswordOverlayView.OnPasswordAuthListener {
+            override fun onAuthSuccess() {
+                isParentAuthenticated = true
+                passwordOverlayView.visibility = View.GONE
+                mainScroll.visibility = View.VISIBLE
+                FocusHelper.requestFocusSafe(findViewById(R.id.btnQuickLock))
+                onAuthenticated()
+            }
+
+            override fun onAuthCancelled() {
+                finish()
+            }
+        })
+
         tvServiceStatus = findViewById(R.id.tvServiceStatus)
 
         btnPermissionOverlay = findViewById(R.id.btnPermissionOverlay)
@@ -109,6 +182,9 @@ class MainActivity : AppCompatActivity() {
 
         btnPermissionDeviceAdmin = findViewById(R.id.btnPermissionDeviceAdmin)
         tvStatusDeviceAdmin = findViewById(R.id.tvStatusDeviceAdmin)
+
+        btnPermissionMic = findViewById(R.id.btnPermissionMic)
+        tvStatusMic = findViewById(R.id.tvStatusMic)
 
         tvCurrentIntervalText = findViewById(R.id.tvCurrentIntervalText)
         tvCurrentServerUrl = findViewById(R.id.tvCurrentServerUrl)
@@ -130,6 +206,7 @@ class MainActivity : AppCompatActivity() {
             btnPermissionOverlay,
             btnPermissionAccessibility,
             btnPermissionDeviceAdmin,
+            btnPermissionMic,
             findViewById(R.id.btnInterval5),
             findViewById(R.id.btnInterval10),
             findViewById(R.id.btnInterval15),
@@ -175,6 +252,11 @@ class MainActivity : AppCompatActivity() {
         // 3. 设备管理员授权跳转
         btnPermissionDeviceAdmin.setOnClickListener {
             openDeviceAdminSettings()
+        }
+
+        // 4. 麦克风录音权限授权
+        btnPermissionMic.setOnClickListener {
+            requestMicrophonePermission()
         }
 
         // 倒计时时长分段选择器
@@ -271,12 +353,9 @@ class MainActivity : AppCompatActivity() {
      * 1. 安全跳转悬浮窗权限配置页（针对 Android TV / 小米电视 Leanback 深度适配多级降级机制）
      */
     private fun openOverlayPermissionSettings() {
-        if (isFastDoubleClick()) return
+        if (isFastDoubleClick() || !isParentAuthenticated) return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            // 核心安全前置：给家长临时放行 5 分钟无障碍拦截，防止刚打开设置就被无障碍服务拦截闪退回桌面
-            ParentAuthManager.grantTemporaryPass(5)
-
             val candidateIntents = listOf(
                 // 方案 A：标准手机悬浮窗权限管理页（指定包名）
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
@@ -304,11 +383,15 @@ class MainActivity : AppCompatActivity() {
             var launched = false
             for (intent in candidateIntents) {
                 try {
+                    isNavigatingToSettings = true
+                    ParentAuthManager.grantTemporaryPass(5)
                     startActivity(intent)
                     launched = true
                     Toast.makeText(this, "请在设置中开启【允许显示在其他应用上层】权限", Toast.LENGTH_LONG).show()
                     break
                 } catch (e: Exception) {
+                    isNavigatingToSettings = false
+                    ParentAuthManager.revokePass()
                     L.d("Failed to launch overlay intent candidate: $intent, error: ${e.message}")
                 }
             }
@@ -332,12 +415,9 @@ class MainActivity : AppCompatActivity() {
      * 2. 安全跳转无障碍服务配置页（针对 Android TV / 小米电视 Leanback 深度适配多级降级机制）
      */
     private fun openAccessibilitySettings() {
-        if (isFastDoubleClick()) return
+        if (isFastDoubleClick() || !isParentAuthenticated) return
 
         if (!TvAccessibilityService.isServiceRunning()) {
-            // 核心安全前置：给家长临时放行 5 分钟无障碍拦截
-            ParentAuthManager.grantTemporaryPass(5)
-
             val candidateIntents = listOf(
                 // 方案 A：标准系统无障碍设置页
                 Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
@@ -356,11 +436,15 @@ class MainActivity : AppCompatActivity() {
             var launched = false
             for (intent in candidateIntents) {
                 try {
+                    isNavigatingToSettings = true
+                    ParentAuthManager.grantTemporaryPass(5)
                     startActivity(intent)
                     launched = true
                     Toast.makeText(this, "请在列表中找到【XiaomiCoreService】并开启服务", Toast.LENGTH_LONG).show()
                     break
                 } catch (e: Exception) {
+                    isNavigatingToSettings = false
+                    ParentAuthManager.revokePass()
                     L.d("Failed to launch accessibility intent candidate: $intent, error: ${e.message}")
                 }
             }
@@ -385,12 +469,9 @@ class MainActivity : AppCompatActivity() {
      * 3. 安全激活设备管理器（针对 Android TV / 小米电视深度适配防崩机制）
      */
     private fun openDeviceAdminSettings() {
-        if (isFastDoubleClick()) return
+        if (isFastDoubleClick() || !isParentAuthenticated) return
 
         if (!DeviceAdminManager.isAdminActive(this)) {
-            // 核心安全前置：给家长临时放行 5 分钟无障碍拦截
-            ParentAuthManager.grantTemporaryPass(5)
-
             val candidateIntents = listOf(
                 // 方案 A：标准设备管理器激活界面
                 DeviceAdminManager.buildEnableAdminIntent(this),
@@ -411,10 +492,14 @@ class MainActivity : AppCompatActivity() {
             var launched = false
             for (intent in candidateIntents) {
                 try {
+                    isNavigatingToSettings = true
+                    ParentAuthManager.grantTemporaryPass(5)
                     startActivity(intent)
                     launched = true
                     break
                 } catch (e: Exception) {
+                    isNavigatingToSettings = false
+                    ParentAuthManager.revokePass()
                     L.d("Failed to launch device admin intent candidate: $intent, error: ${e.message}")
                 }
             }
@@ -479,6 +564,36 @@ class MainActivity : AppCompatActivity() {
             tvStatusDeviceAdmin.text = "未激活"
             tvStatusDeviceAdmin.setBackgroundResource(R.drawable.bg_ios_status_red)
             tvStatusDeviceAdmin.setTextColor(ContextCompat.getColor(this, R.color.ios_red))
+        }
+
+        // 麦克风录音权限
+        val hasMic = ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (hasMic) {
+            tvStatusMic.text = "已授权"
+            tvStatusMic.setBackgroundResource(R.drawable.bg_ios_status_green)
+            tvStatusMic.setTextColor(ContextCompat.getColor(this, R.color.ios_green))
+        } else {
+            tvStatusMic.text = "去授权"
+            tvStatusMic.setBackgroundResource(R.drawable.bg_ios_badge_orange)
+            tvStatusMic.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
+        }
+    }
+
+    private fun requestMicrophonePermission() {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.RECORD_AUDIO), RC_RECORD_AUDIO)
+        } else {
+            Toast.makeText(this, "麦克风语音录入权限已正常开启", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == RC_RECORD_AUDIO) {
+            checkPermissionsAndUpdateUi()
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "麦克风录音权限已成功开启", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -566,13 +681,26 @@ class MainActivity : AppCompatActivity() {
         }
         tvCurrentVoiceDurationText.text = "${preferenceManager.voiceMaxDurationSeconds} 秒"
 
-        val apiKey = preferenceManager.baiduAsrApiKey
-        tvCurrentBaiduApiKey.text = if (apiKey.isNotBlank()) {
-            if (apiKey.length > 8) apiKey.take(5) + "..." + apiKey.takeLast(4) else apiKey
-        } else "未配置"
+        val apiKey = preferenceManager.baiduAsrApiKey.trim()
+        if (apiKey.isBlank()) {
+            tvCurrentBaiduApiKey.text = "未配置"
+            tvCurrentBaiduApiKey.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
+        } else if (apiKey == PreferenceManager.DEFAULT_BAIDU_ASR_API_KEY) {
+            tvCurrentBaiduApiKey.text = "未配置（默认占位符）"
+            tvCurrentBaiduApiKey.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
+        } else {
+            tvCurrentBaiduApiKey.text = if (apiKey.length > 8) apiKey.take(5) + "..." + apiKey.takeLast(4) else apiKey
+            tvCurrentBaiduApiKey.setTextColor(ContextCompat.getColor(this, R.color.ios_text_secondary))
+        }
 
-        val secretKey = preferenceManager.baiduAsrSecretKey
-        tvCurrentBaiduSecretKey.text = if (secretKey.isNotBlank()) "••••••••" else "未配置"
+        val secretKey = preferenceManager.baiduAsrSecretKey.trim()
+        if (secretKey.isBlank() || secretKey == PreferenceManager.DEFAULT_BAIDU_ASR_SECRET_KEY) {
+            tvCurrentBaiduSecretKey.text = "未配置（默认占位符）"
+            tvCurrentBaiduSecretKey.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
+        } else {
+            tvCurrentBaiduSecretKey.text = "••••••••"
+            tvCurrentBaiduSecretKey.setTextColor(ContextCompat.getColor(this, R.color.ios_text_secondary))
+        }
     }
 
     private fun showVoiceInteractionModeDialog() {
@@ -647,9 +775,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performTestBaiduVoice() {
+        val apiKey = preferenceManager.baiduAsrApiKey.trim()
+        val secretKey = preferenceManager.baiduAsrSecretKey.trim()
+
+        if (apiKey.isBlank() || secretKey.isBlank() ||
+            apiKey == PreferenceManager.DEFAULT_BAIDU_ASR_API_KEY ||
+            secretKey == PreferenceManager.DEFAULT_BAIDU_ASR_SECRET_KEY) {
+            AlertDialog.Builder(this)
+                .setTitle("提示：未配置百度云真实 Key")
+                .setMessage("当前使用的是系统内置的测试占位符 Key，无法连接云端识别服务。\n\n请先点击上方【百度语音 API Key】和【Secret Key】，填入您在百度智能云控制台申请的真实有效凭据后再进行连通性测试。")
+                .setPositiveButton("知道了", null)
+                .show()
+            return
+        }
+
         // 检查录音权限
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
+            ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.RECORD_AUDIO), RC_RECORD_AUDIO)
         }
 
         Toast.makeText(this, "正在测试百度语音识别服务连通性...", Toast.LENGTH_SHORT).show()
@@ -673,13 +815,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showChangePasswordDialog() {
+        val container = FrameLayout(this).apply {
+            setPadding(48, 16, 48, 0)
+        }
         val input = EditText(this).apply {
             hint = "请输入新的 6 位数字密码"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            filters = arrayOf(InputFilter.LengthFilter(6))
         }
+        container.addView(input)
+
         AlertDialog.Builder(this)
-            .setTitle("修改家长密码")
-            .setMessage("当前密码为：${preferenceManager.parentPassword}")
-            .setView(input)
+            .setTitle("修改家长防逃逸密码")
+            .setMessage("请输入新的 6 位纯数字密码（修改后请牢记）")
+            .setView(container)
             .setPositiveButton("保存") { _, _ ->
                 val newPwd = input.text.toString().trim()
                 if (newPwd.length == 6 && newPwd.all { it.isDigit() }) {
@@ -749,10 +898,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        ParentAuthManager.revokePass()
         try {
             countdownReceiver?.let { unregisterReceiver(it) }
         } catch (e: Exception) {
             L.w("Failed to unregister countdown receiver", tr = e)
         }
+    }
+
+    companion object {
+        private const val RC_RECORD_AUDIO = 101
     }
 }

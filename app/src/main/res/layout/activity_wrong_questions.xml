@@ -3,6 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/ios_bg_black"
+    android:clipChildren="false"
     android:orientation="vertical"
     android:paddingStart="16dp"
     android:paddingTop="18dp"
@@ -66,5 +67,6 @@
         android:id="@+id/rvWrongQuestions"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipChildren="false"
         android:clipToPadding="false" />
 </LinearLayout>

@@ -1,8 +1,11 @@
 package com.parent.tvlock.overlay
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
-import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
 import android.util.AttributeSet
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -44,12 +47,24 @@ import java.io.File
 class QuestionOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
+    defStyleAttr: Int = 0,
+    private var initialQuestionId: Long? = null
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
     interface OnAnswerResultListener {
         fun onAnswerCorrect()
         fun onAnswerWrong()
+    }
+
+    companion object {
+        private val ESCAPE_KEY_CODES = setOf(
+            KeyEvent.KEYCODE_BACK,
+            KeyEvent.KEYCODE_MENU,
+            KeyEvent.KEYCODE_SETTINGS,
+            KeyEvent.KEYCODE_APP_SWITCH,
+            KeyEvent.KEYCODE_TV,
+            KeyEvent.KEYCODE_TV_INPUT
+        )
     }
 
     private val viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -62,7 +77,6 @@ class QuestionOverlayView @JvmOverloads constructor(
     private val preferenceManager = PreferenceManager.getInstance(context)
     private val baiduSpeechManager = BaiduSpeechManager.getInstance(context)
     private val audioRecorder = AudioRecorderHelper(viewScope)
-    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private var answerResultListener: OnAnswerResultListener? = null
 
@@ -121,7 +135,6 @@ class QuestionOverlayView @JvmOverloads constructor(
     private var isSubmitting: Boolean = false
     private var remainingRetries: Int = 2
     private var isVoiceRecording: Boolean = false
-    private var isMutedByVoice: Boolean = false
 
     init {
         val view = LayoutInflater.from(context).inflate(R.layout.view_question_overlay, this, true)
@@ -187,6 +200,11 @@ class QuestionOverlayView @JvmOverloads constructor(
         // 语音题触屏长按/点击兼容处理（在支持触屏或鼠标的设备上同样可用）
         setupVoiceRecordButtonTouch()
 
+        // 根据家长设置的防沉迷锁屏周期，动态显示副标题文案
+        val tvLockSubtitle = view.findViewById<TextView>(R.id.tvLockSubtitle)
+        val interval = preferenceManager.lockIntervalMinutes
+        tvLockSubtitle?.text = "答对本题即可重新解锁电视 $interval 分钟 · 答错将展示详细解析并自动换题"
+
         // 载入第一道题目
         loadNextQuestion()
     }
@@ -222,12 +240,12 @@ class QuestionOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * 遥控器按键全局拦截：严防返回键逃逸，并支持遥控器语音键/OK键触发语音录制
+     * 遥控器按键全局拦截：严防返回键、菜单键、设置键等逃逸，并支持遥控器语音键/OK键触发语音录制
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-            L.d("KEYCODE_BACK intercepted in QuestionOverlayView.")
-            return true // 完全消耗返回键事件，禁止退出
+        if (ESCAPE_KEY_CODES.contains(event.keyCode)) {
+            L.d("Escape key intercepted in QuestionOverlayView: ${event.keyCode}")
+            return true // 完全消耗逃逸按键事件，禁止呼出菜单或退出
         }
 
         // 语音题专属按键响应（支持标准蓝牙语音键 KEYCODE_VOICE_ASSIST/KEYCODE_SEARCH 及 确定/OK键）
@@ -274,9 +292,58 @@ class QuestionOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * 抽取并加载下一道题目
+     * 智能检查当前环境是否满足运行语音认读题的所有必要条件
+     * 必须同时满足：
+     * 1. 麦克风 RECORD_AUDIO 权限已授予；
+     * 2. 网络已连接（百度语音识别是云端接口，断网无法识别）；
+     * 3. 百度语音 API Key 与 Secret Key 已有效配置（非空且非出厂默认占位符）。
      */
-    private fun loadNextQuestion() {
+    private fun isVoiceQuestionEligible(): Boolean {
+        // 1. 录音权限检查
+        val hasMicPermission = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasMicPermission) {
+            L.d("Voice question not eligible: RECORD_AUDIO permission not granted.")
+            return false
+        }
+
+        // 2. 网络连通性检查
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val isNetworkConnected = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val network = cm?.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } else {
+            @Suppress("DEPRECATION")
+            cm?.activeNetworkInfo?.isConnected == true
+        }
+        if (!isNetworkConnected) {
+            L.d("Voice question not eligible: Device is offline.")
+            return false
+        }
+
+        // 3. 百度云语音鉴权 Key 有效性检查（排除默认测试占位符）
+        val apiKey = preferenceManager.baiduAsrApiKey.trim()
+        val secretKey = preferenceManager.baiduAsrSecretKey.trim()
+        if (apiKey.isBlank() || secretKey.isBlank()) {
+            L.d("Voice question not eligible: Baidu API Key or Secret Key is blank.")
+            return false
+        }
+        if (apiKey == PreferenceManager.DEFAULT_BAIDU_ASR_API_KEY || secretKey == PreferenceManager.DEFAULT_BAIDU_ASR_SECRET_KEY) {
+            L.d("Voice question not eligible: Baidu API Key is placeholder dummy key.")
+            return false
+        }
+
+        return true
+    }
+
+    /**
+     * 抽取并加载下一道题目
+     * @param forceChoiceOnly 是否强制仅抽选择题（在语音启动失败或降级时使用）
+     */
+    private fun loadNextQuestion(forceChoiceOnly: Boolean = false) {
         countdownNextJob?.cancel()
         isSubmitting = false
 
@@ -284,16 +351,29 @@ class QuestionOverlayView @JvmOverloads constructor(
         resetOptionsUi()
 
         viewScope.launch {
+            val isVoiceEligible = !forceChoiceOnly && isVoiceQuestionEligible()
+
             val question = withContext(Dispatchers.IO) {
+                // 若指定了初始重练题目（如从错题本点击进入），优先加载该指定题
+                initialQuestionId?.let { designatedId ->
+                    initialQuestionId = null
+                    val designated = questionDao.getQuestionById(designatedId)
+                    if (designated != null) {
+                        return@withContext Pair(designated, true)
+                    }
+                }
+
                 // 优先从错题本中抽取待巩固的错题
                 val wrongQuestionId = wrongQuestionDao.getRandomUnmasteredQuestionId()
                 if (wrongQuestionId != null && Math.random() < 0.5) {
                     val q = questionDao.getQuestionById(wrongQuestionId)
-                    if (q != null) return@withContext Pair(q, true)
+                    if (q != null && (isVoiceEligible || !q.isVoiceType)) {
+                        return@withContext Pair(q, true)
+                    }
                 }
 
-                // 若无错题或按概率走全库抽取未答对题
-                val randomQ = questionDao.getRandomQuestionForLock()
+                // 若无错题或按概率走全库抽取未答对题（若环境不具备语音能力则严格过滤为选择题）
+                val randomQ = questionDao.getRandomQuestionForLock(onlyChoice = !isVoiceEligible)
                 Pair(randomQ, false)
             }
 
@@ -501,15 +581,6 @@ class QuestionOverlayView @JvmOverloads constructor(
         if (isVoiceRecording || isSubmitting) return
         isVoiceRecording = true
 
-        // 录音时静音电视背景音，避免动画片噪音干扰麦克风（已获用户确认）
-        try {
-            audioManager.setStreamMute(AudioManager.STREAM_MUSIC, true)
-            isMutedByVoice = true
-            L.i("Muted TV STREAM_MUSIC during voice recording.")
-        } catch (e: Exception) {
-            L.w("Failed to mute TV audio", tr = e)
-        }
-
         btnVoiceRecord.setBackgroundResource(R.drawable.bg_option_btn_wrong)
         tvVoiceStatus.text = "🔴 正在聆听中... 请大声说出答案"
         tvVoiceCountdown.visibility = View.VISIBLE
@@ -539,11 +610,14 @@ class QuestionOverlayView @JvmOverloads constructor(
         )
 
         if (!started) {
-            unmuteTvAudio()
             isVoiceRecording = false
             countdownNextJob?.cancel()
             resetVoiceUi()
-            tvVoiceResult.text = "麦克风启动失败，请检查录音权限！"
+            tvVoiceResult.text = "未检测到可用麦克风，正在为您切换为选择题..."
+            viewScope.launch {
+                delay(1500L)
+                loadNextQuestion(forceChoiceOnly = true)
+            }
         }
     }
 
@@ -563,7 +637,6 @@ class QuestionOverlayView @JvmOverloads constructor(
         isVoiceRecording = false
         countdownNextJob?.cancel()
         tvVoiceCountdown.visibility = View.GONE
-        unmuteTvAudio()
 
         btnVoiceRecord.setBackgroundResource(R.drawable.selector_option_button)
 
@@ -689,18 +762,6 @@ class QuestionOverlayView @JvmOverloads constructor(
         }
     }
 
-    private fun unmuteTvAudio() {
-        if (isMutedByVoice) {
-            try {
-                audioManager.setStreamMute(AudioManager.STREAM_MUSIC, false)
-                isMutedByVoice = false
-                L.i("Restored TV STREAM_MUSIC volume.")
-            } catch (e: Exception) {
-                // ignore
-            }
-        }
-    }
-
     /**
      * 处理提交答案
      */
@@ -806,7 +867,6 @@ class QuestionOverlayView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         audioRecorder.stopRecording()
-        unmuteTvAudio()
         viewScope.cancel()
     }
 }

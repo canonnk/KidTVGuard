@@ -119,12 +119,13 @@ class WrongQuestionDao(private val dbHelper: AppDatabaseHelper) {
                 w.id AS w_id, w.questionId AS w_questionId, w.wrongCount AS w_wrongCount,
                 w.lastWrongAnswer AS w_lastWrongAnswer, w.lastWrongTime AS w_lastWrongTime,
                 w.isMastered AS w_isMastered, w.masteredTime AS w_masteredTime,
-                q.id AS q_id, q.subject AS q_subject, q.questionText AS q_questionText,
+                q.id AS q_id, q.subject AS q_subject, q.questionType AS q_questionType, q.questionText AS q_questionText,
                 q.questionImageUrl AS q_questionImageUrl, q.localImagePath AS q_localImagePath,
                 q.optionA AS q_optionA, q.optionB AS q_optionB, q.optionC AS q_optionC, q.optionD AS q_optionD,
                 q.optionAImageUrl AS q_optionAImageUrl, q.optionBImageUrl AS q_optionBImageUrl,
                 q.optionCImageUrl AS q_optionCImageUrl, q.optionDImageUrl AS q_optionDImageUrl,
-                q.correctAnswer AS q_correctAnswer, q.explanation AS q_explanation,
+                q.correctAnswer AS q_correctAnswer, q.acceptableAnswers AS q_acceptableAnswers,
+                q.explanation AS q_explanation,
                 q.isAnsweredCorrectly AS q_isAnsweredCorrectly
             FROM ${AppDatabaseHelper.TABLE_WRONG_QUESTIONS} w
             LEFT JOIN ${AppDatabaseHelper.TABLE_QUESTIONS} q ON w.questionId = q.id
@@ -138,6 +139,7 @@ class WrongQuestionDao(private val dbHelper: AppDatabaseHelper) {
                 Question(
                     id = cursor.getLong(cursor.getColumnIndexOrThrow("q_id")),
                     subject = cursor.getString(cursor.getColumnIndexOrThrow("q_subject")),
+                    questionType = cursor.getString(cursor.getColumnIndexOrThrow("q_questionType")) ?: Question.TYPE_CHOICE,
                     questionText = cursor.getString(cursor.getColumnIndexOrThrow("q_questionText")),
                     questionImageUrl = cursor.getString(cursor.getColumnIndexOrThrow("q_questionImageUrl")),
                     localImagePath = cursor.getString(cursor.getColumnIndexOrThrow("q_localImagePath")),
@@ -150,6 +152,7 @@ class WrongQuestionDao(private val dbHelper: AppDatabaseHelper) {
                     optionCImageUrl = cursor.getString(cursor.getColumnIndexOrThrow("q_optionCImageUrl")),
                     optionDImageUrl = cursor.getString(cursor.getColumnIndexOrThrow("q_optionDImageUrl")),
                     correctAnswer = cursor.getString(cursor.getColumnIndexOrThrow("q_correctAnswer")),
+                    acceptableAnswers = cursor.getString(cursor.getColumnIndexOrThrow("q_acceptableAnswers")),
                     explanation = cursor.getString(cursor.getColumnIndexOrThrow("q_explanation")),
                     isAnsweredCorrectly = cursor.getInt(cursor.getColumnIndexOrThrow("q_isAnsweredCorrectly"))
                 )

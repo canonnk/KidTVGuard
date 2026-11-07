@@ -7,7 +7,7 @@ package com.parent.tvlock.util
  * 1. 过滤百度 ASR 自动附带的句末标点符号；
  * 2. 剥离幼儿高频口头习惯前缀（如“这是一个”、“那是”、“我看到是”、“有”等）；
  * 3. 剥离幼儿句尾语气助词（如“呀”、“啊”、“呢”、“吧”、“啦”、“哦”等）；
- * 4. 支持主答案与同义词变体列表（`acceptableAnswers`）双向包含匹配；
+ * 4. 支持主答案与同义词变体列表（`acceptableAnswers`）正向核心词包含匹配；
  * 5. 数字与汉字量词互通兼容（如“3”与“三”、“3只”与“三只”）。
  */
 object VoiceAnswerMatcher {
@@ -41,6 +41,9 @@ object VoiceAnswerMatcher {
         }
 
         val cleaned = cleanRecognizedText(rawText)
+        if (cleaned.isBlank()) {
+            return MatchResult(false, rawText, "")
+        }
 
         // 构建全部目标比对词集合
         val targets = mutableListOf<String>()
@@ -57,20 +60,23 @@ object VoiceAnswerMatcher {
             }
         }
 
-        // 梯级比对逻辑
+        val normCleaned = normalizeNumbers(cleaned)
+
+        // 梯级比对逻辑（按已确认的方案 A：正向核心词包含与归一化匹配，废除不安全的反向包含）
         for (target in targets) {
             // 1. 绝对精准匹配（忽略大小写）
             if (cleaned.equals(target, ignoreCase = true)) {
                 return MatchResult(true, rawText, cleaned, target)
             }
 
-            // 2. 双向包含匹配（如小朋友说“大苹果”，目标为“苹果”；或小朋友说“苹果”，目标为“红苹果”）
-            if (cleaned.contains(target, ignoreCase = true) || target.contains(cleaned, ignoreCase = true)) {
+            // 2. 正向核心词包含匹配（小朋友完整表述包含目标关键词，如说“大苹果”、“红苹果”，目标为“苹果”）
+            if (cleaned.contains(target, ignoreCase = true)) {
                 return MatchResult(true, rawText, cleaned, target)
             }
 
             // 3. 数字形态归一化匹配（中英文数字互转）
-            if (normalizeNumbers(cleaned) == normalizeNumbers(target)) {
+            val normTarget = normalizeNumbers(target)
+            if (normCleaned == normTarget || normCleaned.contains(normTarget, ignoreCase = true)) {
                 return MatchResult(true, rawText, cleaned, target)
             }
         }
