@@ -25,8 +25,11 @@ class ServiceAndDeadlockTest {
     fun testIntentActionConstants() {
         assertNotNull(LockForegroundService.ACTION_START)
         assertNotNull(LockForegroundService.ACTION_RESET_COUNTDOWN)
+        assertNotNull(LockForegroundService.ACTION_PAUSE_COUNTDOWN)
         assertNotNull(LockForegroundService.ACTION_LOCK_NOW)
         assertNotNull(LockForegroundService.ACTION_UNLOCK)
         assertNotNull(LockForegroundService.ACTION_COUNTDOWN_TICK)
+        assertNotNull(LockForegroundService.EXTRA_IS_PAUSED)
+        assertEquals(false, LockForegroundService.isTemporarilyPaused)
     }
 }

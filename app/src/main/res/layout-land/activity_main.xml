@@ -511,6 +511,18 @@
                             android:text="60分"
                             android:textColor="@color/ios_text_primary"
                             android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/btnIntervalPause"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1.2"
+                            android:background="@drawable/selector_ios_row"
+                            android:focusable="true"
+                            android:gravity="center"
+                            android:text="暂时关闭"
+                            android:textColor="@color/ios_text_primary"
+                            android:textSize="13sp" />
                     </LinearLayout>
                 </LinearLayout>
 

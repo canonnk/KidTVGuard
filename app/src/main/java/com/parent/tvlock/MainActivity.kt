@@ -91,6 +91,11 @@ class MainActivity : AppCompatActivity() {
         refreshDashboardBriefStats()
         tvCurrentServerUrl.text = preferenceManager.syncServerUrl
         refreshVoiceSettingsUi()
+        if (LockForegroundService.isTemporarilyPaused) {
+            tvServiceStatus.text = "防沉迷已暂时关闭（本次有效）"
+            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
+        }
+        updateIntervalSelectionUi()
     }
 
     private fun initViews() {
@@ -130,6 +135,7 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.btnInterval15),
             findViewById(R.id.btnInterval30),
             findViewById(R.id.btnInterval60),
+            findViewById(R.id.btnIntervalPause),
             findViewById(R.id.btnSyncQuestions),
             findViewById(R.id.btnConfigServerUrl),
             findViewById(R.id.btnChangePassword),
@@ -186,6 +192,13 @@ class MainActivity : AppCompatActivity() {
                 updateIntervalSelectionUi()
                 Toast.makeText(this, "已设定每次观看限额为 $minutes 分钟", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        // 暂时关闭（临时状态，不写入持久化，下次启动恢复原配置）
+        findViewById<View>(R.id.btnIntervalPause).setOnClickListener {
+            LockForegroundService.pauseCountdown(this)
+            updateIntervalSelectionUi()
+            Toast.makeText(this, "已暂时关闭倒计时，下次启动将自动恢复为 ${preferenceManager.lockIntervalMinutes} 分钟", Toast.LENGTH_SHORT).show()
         }
 
         // 立即同步题库
@@ -470,8 +483,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateIntervalSelectionUi() {
+        val isPaused = LockForegroundService.isTemporarilyPaused
         val currentMinutes = preferenceManager.lockIntervalMinutes
-        tvCurrentIntervalText.text = "$currentMinutes 分钟"
+
+        if (isPaused) {
+            tvCurrentIntervalText.text = "暂时关闭 (下次恢复${currentMinutes}分)"
+            tvCurrentIntervalText.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
+        } else {
+            tvCurrentIntervalText.text = "$currentMinutes 分钟"
+            tvCurrentIntervalText.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
+        }
 
         val ids = listOf(
             Pair(R.id.btnInterval5, 5),
@@ -482,13 +503,22 @@ class MainActivity : AppCompatActivity() {
         )
         for ((id, m) in ids) {
             val btn = findViewById<TextView>(id)
-            if (m == currentMinutes) {
+            if (!isPaused && m == currentMinutes) {
                 btn.setBackgroundResource(R.drawable.bg_ios_segment_selected)
                 btn.setTextColor(ContextCompat.getColor(this, R.color.white))
             } else {
                 btn.setBackgroundResource(R.drawable.selector_ios_row)
                 btn.setTextColor(ContextCompat.getColor(this, R.color.ios_text_secondary))
             }
+        }
+
+        val btnPause = findViewById<TextView>(R.id.btnIntervalPause)
+        if (isPaused) {
+            btnPause.setBackgroundResource(R.drawable.bg_ios_segment_selected)
+            btnPause.setTextColor(ContextCompat.getColor(this, R.color.white))
+        } else {
+            btnPause.setBackgroundResource(R.drawable.selector_ios_row)
+            btnPause.setTextColor(ContextCompat.getColor(this, R.color.ios_text_secondary))
         }
     }
 
@@ -692,14 +722,19 @@ class MainActivity : AppCompatActivity() {
                 if (intent?.action == LockForegroundService.ACTION_COUNTDOWN_TICK) {
                     val remaining = intent.getLongExtra(LockForegroundService.EXTRA_REMAINING_SECONDS, 0L)
                     val isLocked = intent.getBooleanExtra(LockForegroundService.EXTRA_IS_LOCKED, false)
+                    val isPaused = intent.getBooleanExtra(LockForegroundService.EXTRA_IS_PAUSED, false)
 
                     if (isLocked) {
                         tvServiceStatus.text = "已锁定电视！请完成答题解锁"
                         tvServiceStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.ios_red))
+                    } else if (isPaused || LockForegroundService.isTemporarilyPaused) {
+                        tvServiceStatus.text = "防沉迷已暂时关闭（本次有效）"
+                        tvServiceStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.ios_orange))
                     } else {
                         tvServiceStatus.text = "倒计时进行中 · 剩余 ${DateTimeUtils.formatDuration(remaining)}"
                         tvServiceStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.ios_text_primary))
                     }
+                    updateIntervalSelectionUi()
                 }
             }
         }

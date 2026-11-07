@@ -53,6 +53,7 @@ class LockForegroundService : Service() {
 
         const val ACTION_START = "com.parent.tvlock.action.START"
         const val ACTION_RESET_COUNTDOWN = "com.parent.tvlock.action.RESET_COUNTDOWN"
+        const val ACTION_PAUSE_COUNTDOWN = "com.parent.tvlock.action.PAUSE_COUNTDOWN"
         const val ACTION_LOCK_NOW = "com.parent.tvlock.action.LOCK_NOW"
         const val ACTION_UNLOCK = "com.parent.tvlock.action.UNLOCK"
 
@@ -60,10 +61,18 @@ class LockForegroundService : Service() {
         const val ACTION_COUNTDOWN_TICK = "com.parent.tvlock.broadcast.COUNTDOWN_TICK"
         const val EXTRA_REMAINING_SECONDS = "extra_remaining_seconds"
         const val EXTRA_IS_LOCKED = "extra_is_locked"
+        const val EXTRA_IS_PAUSED = "extra_is_paused"
 
         @Volatile
         var isRunning: Boolean = false
             private set
+
+        /**
+         * 纯内存临时停用标志：本次运行期间暂停倒计时且不锁屏，下次冷启动或重启自动恢复原设定时长
+         */
+        @Volatile
+        var isTemporarilyPaused: Boolean = false
+            internal set
 
         fun startService(context: Context) {
             val intent = Intent(context, LockForegroundService::class.java).apply {
@@ -75,6 +84,13 @@ class LockForegroundService : Service() {
         fun startCountdown(context: Context) {
             val intent = Intent(context, LockForegroundService::class.java).apply {
                 action = ACTION_RESET_COUNTDOWN
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun pauseCountdown(context: Context) {
+            val intent = Intent(context, LockForegroundService::class.java).apply {
+                action = ACTION_PAUSE_COUNTDOWN
             }
             ContextCompat.startForegroundService(context, intent)
         }
@@ -119,8 +135,20 @@ class LockForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_PAUSE_COUNTDOWN -> {
+                L.i("Command received: Temporarily pause countdown.")
+                isTemporarilyPaused = true
+                preferenceManager.lockTargetTimestamp = 0L
+                preferenceManager.isLocked = false
+                overlayLockManager.dismissLock()
+                countdownJob?.cancel()
+                remainingSeconds = -1L
+                updateNotification("电视防沉迷守护中 · 倒计时已暂时关闭")
+                broadcastTick(-1L, isLocked = false, isPaused = true)
+            }
             ACTION_RESET_COUNTDOWN, ACTION_UNLOCK -> {
                 L.i("Command received: Reset countdown.")
+                isTemporarilyPaused = false
                 preferenceManager.isLocked = false
                 overlayLockManager.dismissLock()
                 resetCountdown()
@@ -130,7 +158,11 @@ class LockForegroundService : Service() {
                 triggerLockScreen()
             }
             ACTION_START -> {
-                if (preferenceManager.isLocked) {
+                if (isTemporarilyPaused) {
+                    L.i("Service started but countdown is temporarily paused. Keeping paused.")
+                    updateNotification("电视防沉迷守护中 · 倒计时已暂时关闭")
+                    broadcastTick(-1L, isLocked = false, isPaused = true)
+                } else if (preferenceManager.isLocked) {
                     triggerLockScreen()
                 } else if (countdownJob == null || !countdownJob!!.isActive) {
                     resumeOrStartCountdown()
@@ -176,12 +208,13 @@ class LockForegroundService : Service() {
      * 核心倒计时轮询协程
      */
     private fun startCountdownLoop(initialSeconds: Long) {
+        isTemporarilyPaused = false
         countdownJob?.cancel()
         remainingSeconds = initialSeconds
         countdownJob = serviceScope.launch {
             while (isActive && remainingSeconds > 0) {
                 updateNotification("剩余观看时间：${DateTimeUtils.formatDuration(remainingSeconds)}")
-                broadcastTick(remainingSeconds, isLocked = false)
+                broadcastTick(remainingSeconds, isLocked = false, isPaused = false)
                 delay(1000L)
                 remainingSeconds--
             }
@@ -203,16 +236,17 @@ class LockForegroundService : Service() {
         preferenceManager.lockTargetTimestamp = 0L
         overlayLockManager.showLock()
         updateNotification("电视观看时间已到，已锁定画面，请答题解锁")
-        broadcastTick(0, isLocked = true)
+        broadcastTick(0, isLocked = true, isPaused = false)
     }
 
     /**
      * 向界面广播当前倒计时
      */
-    private fun broadcastTick(seconds: Long, isLocked: Boolean) {
+    private fun broadcastTick(seconds: Long, isLocked: Boolean, isPaused: Boolean = isTemporarilyPaused) {
         val tickIntent = Intent(ACTION_COUNTDOWN_TICK).apply {
             putExtra(EXTRA_REMAINING_SECONDS, seconds)
             putExtra(EXTRA_IS_LOCKED, isLocked)
+            putExtra(EXTRA_IS_PAUSED, isPaused)
             setPackage(packageName)
         }
         sendBroadcast(tickIntent)
