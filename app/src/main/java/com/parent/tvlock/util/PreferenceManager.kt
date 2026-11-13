@@ -6,7 +6,7 @@ import android.content.SharedPreferences
 /**
  * 状态与轻量配置管理器
  */
-class PreferenceManager private constructor(context: Context) {
+class PreferenceManager private constructor(context: Context) : PenaltyStore {
 
     private val sp: SharedPreferences = context.applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
@@ -26,6 +26,17 @@ class PreferenceManager private constructor(context: Context) {
         private const val KEY_BAIDU_ASR_SECRET_KEY = "baidu_asr_secret_key"
         private const val KEY_VOICE_RETRY_COUNT = "voice_retry_count"
 
+        // 答错惩罚机制
+        private const val KEY_PENALTY_LOCK_MINUTES = "penalty_lock_minutes"
+        private const val KEY_MAX_ATTEMPTS_CHOICE = "max_attempts_choice"
+        private const val KEY_MAX_ATTEMPTS_VOICE = "max_attempts_voice"
+        private const val KEY_MAX_ATTEMPTS_FILL = "max_attempts_fill"
+        private const val KEY_PENALTY_UNLOCK_AT = "penalty_unlock_at"
+        private const val KEY_PENALTY_START_AT = "penalty_start_at"
+        private const val KEY_PENALTY_DURATION_MS = "penalty_duration_ms"
+        private const val KEY_ATTEMPT_QUESTION_ID = "attempt_question_id"
+        private const val KEY_ATTEMPT_USED = "attempt_used"
+
         // 交互模式常量
         const val VOICE_MODE_PUSH_TO_TALK = 0 // 对讲机模式：按住说话，松开提交
         const val VOICE_MODE_CLICK_TO_RECORD = 1 // 单击模式：按一下开始录音，再按或超时自动提交
@@ -37,6 +48,10 @@ class PreferenceManager private constructor(context: Context) {
         const val DEFAULT_VOICE_INTERACTION_MODE = VOICE_MODE_PUSH_TO_TALK
         const val DEFAULT_VOICE_MAX_DURATION_SECONDS = 4
         const val DEFAULT_VOICE_RETRY_COUNT = 2
+        const val DEFAULT_PENALTY_LOCK_MINUTES = 5 // 0 表示关闭惩罚锁定
+        const val DEFAULT_MAX_ATTEMPTS_CHOICE = 2
+        const val DEFAULT_MAX_ATTEMPTS_VOICE = 5
+        const val DEFAULT_MAX_ATTEMPTS_FILL = 3
         // 内置默认百度语音测试 Key（供直接体验，可在家长设置中随时替换为您自己的商业/个人 Key）
         const val DEFAULT_BAIDU_ASR_API_KEY = "s58hG8cO277b21E0hG02gB1k"
         const val DEFAULT_BAIDU_ASR_SECRET_KEY = "d6eF91g82h0b021gA1k092hB71g021kA"
@@ -56,7 +71,7 @@ class PreferenceManager private constructor(context: Context) {
      */
     var isLocked: Boolean
         get() = sp.getBoolean(KEY_IS_LOCKED, false)
-        set(value) = sp.edit().putBoolean(KEY_IS_LOCKED, value).apply()
+        set(value) { sp.edit().putBoolean(KEY_IS_LOCKED, value).commit() } // 同步落盘，防止断电丢失
 
     /**
      * 防沉迷触发倒计时（单位：分钟）
@@ -128,4 +143,70 @@ class PreferenceManager private constructor(context: Context) {
     var voiceRetryCount: Int
         get() = sp.getInt(KEY_VOICE_RETRY_COUNT, DEFAULT_VOICE_RETRY_COUNT)
         set(value) = sp.edit().putInt(KEY_VOICE_RETRY_COUNT, value).apply()
+
+    // ======================= 答错惩罚机制 =======================
+
+    /**
+     * 次数用完后的锁定时长（分钟），0 表示关闭惩罚锁定（仅保留重答机会，用完后 3 秒换题）
+     */
+    var penaltyLockMinutes: Int
+        get() = sp.getInt(KEY_PENALTY_LOCK_MINUTES, DEFAULT_PENALTY_LOCK_MINUTES)
+        set(value) = sp.edit().putInt(KEY_PENALTY_LOCK_MINUTES, value).apply()
+
+    /** 选择题可作答总次数 */
+    var maxAttemptsChoice: Int
+        get() = sp.getInt(KEY_MAX_ATTEMPTS_CHOICE, DEFAULT_MAX_ATTEMPTS_CHOICE)
+        set(value) = sp.edit().putInt(KEY_MAX_ATTEMPTS_CHOICE, value).apply()
+
+    /**
+     * 语音题可作答总次数。
+     * 兼容迁移：若从未设置过但存在旧的 voiceRetryCount（重试次数），则总次数 = 旧重试次数 + 1。
+     */
+    var maxAttemptsVoice: Int
+        get() = when {
+            sp.contains(KEY_MAX_ATTEMPTS_VOICE) -> sp.getInt(KEY_MAX_ATTEMPTS_VOICE, DEFAULT_MAX_ATTEMPTS_VOICE)
+            sp.contains(KEY_VOICE_RETRY_COUNT) -> sp.getInt(KEY_VOICE_RETRY_COUNT, DEFAULT_VOICE_RETRY_COUNT) + 1
+            else -> DEFAULT_MAX_ATTEMPTS_VOICE
+        }
+        set(value) = sp.edit().putInt(KEY_MAX_ATTEMPTS_VOICE, value).apply()
+
+    /** 填空题可作答总次数（题型尚未实现，仅预留配置） */
+    var maxAttemptsFill: Int
+        get() = sp.getInt(KEY_MAX_ATTEMPTS_FILL, DEFAULT_MAX_ATTEMPTS_FILL)
+        set(value) = sp.edit().putInt(KEY_MAX_ATTEMPTS_FILL, value).apply()
+
+    /**
+     * 按题型取可作答总次数（至少 1 次），未知题型回退为 1 次
+     */
+    fun maxAttemptsFor(questionType: String): Int {
+        val value = when (questionType.uppercase()) {
+            "CHOICE" -> maxAttemptsChoice
+            "VOICE" -> maxAttemptsVoice
+            "FILL" -> maxAttemptsFill
+            else -> 1
+        }
+        return value.coerceAtLeast(1)
+    }
+
+    // --- PenaltyStore：惩罚运行时状态，全部同步 commit，保证断电前已落盘 ---
+
+    override var penaltyUnlockAt: Long
+        get() = sp.getLong(KEY_PENALTY_UNLOCK_AT, 0L)
+        set(value) { sp.edit().putLong(KEY_PENALTY_UNLOCK_AT, value).commit() }
+
+    override var penaltyStartAt: Long
+        get() = sp.getLong(KEY_PENALTY_START_AT, 0L)
+        set(value) { sp.edit().putLong(KEY_PENALTY_START_AT, value).commit() }
+
+    override var penaltyDurationMs: Long
+        get() = sp.getLong(KEY_PENALTY_DURATION_MS, 0L)
+        set(value) { sp.edit().putLong(KEY_PENALTY_DURATION_MS, value).commit() }
+
+    override var attemptQuestionId: Long
+        get() = sp.getLong(KEY_ATTEMPT_QUESTION_ID, 0L)
+        set(value) { sp.edit().putLong(KEY_ATTEMPT_QUESTION_ID, value).commit() }
+
+    override var attemptUsed: Int
+        get() = sp.getInt(KEY_ATTEMPT_USED, 0)
+        set(value) { sp.edit().putInt(KEY_ATTEMPT_USED, value).commit() }
 }

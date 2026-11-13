@@ -80,6 +80,7 @@
 
                 <!-- 2. Apple Inset Grouped 题目卡片 -->
                 <LinearLayout
+                    android:id="@+id/cardQuestion"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="20dp"
@@ -552,6 +553,50 @@
                         android:textColor="@color/ios_orange"
                         android:textSize="14sp"
                         android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- 4.5 答错惩罚等待面板（默认隐藏） -->
+                <LinearLayout
+                    android:id="@+id/layoutPenalty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:background="@drawable/bg_ios_card"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical"
+                    android:paddingStart="32dp"
+                    android:paddingTop="30dp"
+                    android:paddingEnd="32dp"
+                    android:paddingBottom="30dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvPenaltyTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔒 答题次数已用完，请休息一下"
+                        android:textColor="@color/ios_red"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvPenaltyCountdown"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="05:00"
+                        android:textColor="@color/ios_text_primary"
+                        android:textSize="64sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvPenaltyHint"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="倒计时结束后将自动出新题，答对即可解锁电视"
+                        android:textColor="@color/ios_text_secondary"
+                        android:textSize="16sp" />
                 </LinearLayout>
 
                 <!-- 5. 答对鼓励提示区（默认隐藏） -->

@@ -11,6 +11,7 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -29,6 +30,9 @@ import com.parent.tvlock.net.MemoryImageLoader
 import com.parent.tvlock.util.AudioRecorderHelper
 import com.parent.tvlock.util.FocusHelper
 import com.parent.tvlock.util.L
+import com.parent.tvlock.util.ParentAuthManager
+import com.parent.tvlock.util.ParentGateTrigger
+import com.parent.tvlock.util.PenaltyManager
 import com.parent.tvlock.util.PreferenceManager
 import com.parent.tvlock.util.VoiceAnswerMatcher
 import kotlinx.coroutines.CoroutineScope
@@ -124,6 +128,7 @@ class QuestionOverlayView @JvmOverloads constructor(
     private val wrongQuestionDao = WrongQuestionDao(dbHelper)
     private val answerRecordDao = AnswerRecordDao(dbHelper)
     private val preferenceManager = PreferenceManager.getInstance(context)
+    private val penaltyManager = PenaltyManager.getInstance(context)
     private val baiduSpeechManager = BaiduSpeechManager.getInstance(context)
     private val audioRecorder = AudioRecorderHelper(viewScope)
 
@@ -178,15 +183,33 @@ class QuestionOverlayView @JvmOverloads constructor(
     private val layoutSuccess: LinearLayout
     private val tvSuccessNotice: TextView
 
+    // UI 控件 - 惩罚面板
+    private val cardQuestion: View
+    private val layoutPenalty: LinearLayout
+    private val tvPenaltyTitle: TextView
+    private val tvPenaltyCountdown: TextView
+    private val tvPenaltyHint: TextView
+
     // 运行态数据
     private var currentQuestion: Question? = null
     private var questionStartTime: Long = 0L
     private var isSubmitting: Boolean = false
-    private var remainingRetries: Int = 2
     private var isVoiceRecording: Boolean = false
+
+    // 答错惩罚机制运行态
+    private var attemptsUsed: Int = 0              // 当前题已用作答次数
+    private var currentIsPractice: Boolean = false // 错题本强化重练：不触发惩罚、不持久化作答进度
+    private var progressBaseLabel: String = ""
+    private var isInPenalty: Boolean = false
+    private var penaltyJob: Job? = null
+
+    // 家长应急入口（连按菜单键 -> 家长密码 -> 操作面板）
+    private var parentGateView: View? = null
+    private var contentRoot: View? = null
 
     init {
         val view = LayoutInflater.from(context).inflate(R.layout.view_question_overlay, this, true)
+        contentRoot = getChildAt(0)
 
         isFocusable = true
         isFocusableInTouchMode = true
@@ -237,6 +260,12 @@ class QuestionOverlayView @JvmOverloads constructor(
         layoutSuccess = view.findViewById(R.id.layoutSuccess)
         tvSuccessNotice = view.findViewById(R.id.tvSuccessNotice)
 
+        cardQuestion = view.findViewById(R.id.cardQuestion)
+        layoutPenalty = view.findViewById(R.id.layoutPenalty)
+        tvPenaltyTitle = view.findViewById(R.id.tvPenaltyTitle)
+        tvPenaltyCountdown = view.findViewById(R.id.tvPenaltyCountdown)
+        tvPenaltyHint = view.findViewById(R.id.tvPenaltyHint)
+
         // 遥控器焦点放大与缩放动效
         FocusHelper.setupFocusScaleBatch(btnOptionA, btnOptionB, btnOptionC, btnOptionD, btnVoiceRecord)
 
@@ -252,10 +281,22 @@ class QuestionOverlayView @JvmOverloads constructor(
         // 根据家长设置的防沉迷锁屏周期，动态显示副标题文案
         val tvLockSubtitle = view.findViewById<TextView>(R.id.tvLockSubtitle)
         val interval = preferenceManager.lockIntervalMinutes
-        tvLockSubtitle?.text = "答对本题即可重新解锁电视 $interval 分钟 · 答错将展示详细解析并自动换题"
+        val penaltyMinutes = preferenceManager.penaltyLockMinutes
+        tvLockSubtitle?.text = if (penaltyMinutes > 0) {
+            "答对本题即可重新解锁电视 $interval 分钟 · 答错次数用完将锁定 $penaltyMinutes 分钟"
+        } else {
+            "答对本题即可重新解锁电视 $interval 分钟 · 答错将展示详细解析并自动换题"
+        }
 
-        // 载入第一道题目
-        loadNextQuestion()
+        // 若仍处于惩罚锁定中（如断电/重启/重新亮屏），直接显示惩罚倒计时；否则载入题目
+        if (penaltyManager.isActive()) {
+            L.i("Penalty still active on overlay creation, showing penalty panel.")
+            showPenaltyPanel(keepQuestionVisible = false)
+        } else {
+            // 惩罚已到期（含关机期间到期）：清理残留状态，出新题
+            penaltyManager.clearPenalty()
+            loadNextQuestion()
+        }
     }
 
     /**
@@ -292,6 +333,20 @@ class QuestionOverlayView @JvmOverloads constructor(
      * 遥控器按键全局拦截：严防返回键、菜单键、设置键等逃逸，并支持遥控器语音键/OK键触发语音录制
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // 家长验证/操作面板展示期间：仅放行面板自身按键，逃逸键依旧拦截，且不触发语音录制
+        if (parentGateView != null) {
+            if (ESCAPE_KEY_CODES.contains(event.keyCode)) return true
+            return super.dispatchKeyEvent(event)
+        }
+
+        // 连按菜单键 5 次唤起家长应急入口
+        if (event.keyCode == KeyEvent.KEYCODE_MENU && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            if (ParentGateTrigger.onMenuDown()) {
+                showParentGate()
+                return true
+            }
+        }
+
         if (ESCAPE_KEY_CODES.contains(event.keyCode)) {
             L.d("Escape key intercepted in QuestionOverlayView: ${event.keyCode}")
             return true // 完全消耗逃逸按键事件，禁止呼出菜单或退出
@@ -336,6 +391,100 @@ class QuestionOverlayView @JvmOverloads constructor(
         return super.dispatchKeyEvent(event)
     }
 
+    // ======================= 家长应急入口 =======================
+
+    /**
+     * 展示家长密码验证；验证通过后可选择“清除惩罚并换新题”或“直接解锁电视”
+     */
+    fun showParentGate() {
+        if (parentGateView != null) return
+        L.i("Parent gate requested on lock overlay.")
+
+        if (isVoiceRecording) {
+            audioRecorder.stopRecording()
+            isVoiceRecording = false
+        }
+
+        val gate = ParentPasswordOverlayView(context)
+        gate.setCustomPrompt(
+            title = "🔒 家长验证",
+            subtitle = "请输入 6 位家长密码，可清除惩罚或直接解锁"
+        )
+        gate.setOnPasswordAuthListener(object : ParentPasswordOverlayView.OnPasswordAuthListener {
+            override fun onAuthSuccess() {
+                // 仅用于本次操作，不保留系统设置的临时放行
+                ParentAuthManager.revokePass()
+                showParentActions()
+            }
+
+            override fun onAuthCancelled() {
+                dismissParentGate()
+            }
+        })
+        attachParentGateView(gate)
+        gate.post { gate.resetInput() }
+    }
+
+    private fun showParentActions() {
+        val panel = LayoutInflater.from(context).inflate(R.layout.view_parent_action_overlay, this, false)
+        val btnReset = panel.findViewById<View>(R.id.btnParentResetPenalty)
+        val btnUnlock = panel.findViewById<View>(R.id.btnParentUnlock)
+        val btnCancel = panel.findViewById<View>(R.id.btnParentActionCancel)
+        val tvStatus = panel.findViewById<TextView>(R.id.tvParentActionStatus)
+
+        val penalty = penaltyManager.status()
+        tvStatus.text = if (penalty.active) {
+            "当前处于答错惩罚中，剩余 ${formatMmSs(penalty.remainingSeconds)}"
+        } else {
+            "当前处于答题锁定中"
+        }
+
+        FocusHelper.setupCardRowFocusBatch(btnReset, btnUnlock, btnCancel)
+
+        btnReset.setOnClickListener {
+            L.i("Parent cleared penalty from lock overlay.")
+            dismissParentGate()
+            penaltyJob?.cancel()
+            onPenaltyFinished()
+        }
+        btnUnlock.setOnClickListener {
+            L.i("Parent unlocked TV from lock overlay.")
+            dismissParentGate()
+            answerResultListener?.onAnswerCorrect()
+        }
+        btnCancel.setOnClickListener { dismissParentGate() }
+
+        // 替换密码面板为操作面板
+        parentGateView?.let { removeView(it) }
+        attachParentGateView(panel)
+        panel.post { FocusHelper.requestFocusSafe(btnReset) }
+    }
+
+    private fun attachParentGateView(gate: View) {
+        if (parentGateView == null) {
+            // 阻止底层答题控件被方向键抢走焦点
+            (contentRoot as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        }
+        parentGateView = gate
+        addView(gate, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        gate.requestFocus()
+    }
+
+    private fun dismissParentGate() {
+        parentGateView?.let { removeView(it) }
+        parentGateView = null
+        (contentRoot as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        ParentGateTrigger.reset()
+        // 恢复答题界面焦点
+        when {
+            isInPenalty -> Unit
+            currentQuestion?.isVoiceType == true -> FocusHelper.requestFocusSafe(btnVoiceRecord)
+            else -> listOf(btnOptionA, btnOptionB, btnOptionC, btnOptionD)
+                .firstOrNull { it.isEnabled }
+                ?.let { FocusHelper.requestFocusSafe(it) }
+        }
+    }
+
     fun setOnAnswerResultListener(listener: OnAnswerResultListener) {
         this.answerResultListener = listener
     }
@@ -344,6 +493,14 @@ class QuestionOverlayView @JvmOverloads constructor(
         return isVoiceQuestionEligible(context)
     }
 
+    /** 抽题结果：题目 + 来源标记 */
+    private data class PickedQuestion(
+        val question: Question?,
+        val fromWrongBook: Boolean,
+        val practice: Boolean = false,
+        val restored: Boolean = false
+    )
+
     /**
      * 抽取并加载下一道题目
      * @param forceChoiceOnly 是否强制仅抽选择题（在语音启动失败或降级时使用）
@@ -351,6 +508,7 @@ class QuestionOverlayView @JvmOverloads constructor(
     private fun loadNextQuestion(forceChoiceOnly: Boolean = false) {
         countdownNextJob?.cancel()
         isSubmitting = false
+        isInPenalty = false
 
         // 重置选项背景与状态
         resetOptionsUi()
@@ -358,14 +516,25 @@ class QuestionOverlayView @JvmOverloads constructor(
         viewScope.launch {
             val isVoiceEligible = !forceChoiceOnly && isVoiceQuestionEligible()
 
-            val question = withContext(Dispatchers.IO) {
+            val picked = withContext(Dispatchers.IO) {
                 // 若指定了初始重练题目（如从错题本点击进入），优先加载该指定题（需同时满足语音题环境可用性）
                 initialQuestionId?.let { designatedId ->
                     initialQuestionId = null
                     val designated = questionDao.getQuestionById(designatedId)
                     if (designated != null && (isVoiceEligible || !designated.isVoiceType)) {
-                        return@withContext Pair(designated, true)
+                        return@withContext PickedQuestion(designated, fromWrongBook = true, practice = true)
                     }
+                }
+
+                // 重启/重新亮屏后沿用未答完的题目与已用次数，防止靠重启刷新作答次数或刷题
+                val pendingId = penaltyManager.pendingQuestionId()
+                if (pendingId > 0L) {
+                    val pending = questionDao.getQuestionById(pendingId)
+                    if (pending != null && (isVoiceEligible || !pending.isVoiceType)) {
+                        return@withContext PickedQuestion(pending, fromWrongBook = false, restored = true)
+                    }
+                    // 题目已不存在或当前环境无法作答该题型：丢弃旧进度
+                    penaltyManager.clearAttempts()
                 }
 
                 // 优先从错题本中抽取待巩固的错题
@@ -373,17 +542,16 @@ class QuestionOverlayView @JvmOverloads constructor(
                 if (wrongQuestionId != null && Math.random() < 0.5) {
                     val q = questionDao.getQuestionById(wrongQuestionId)
                     if (q != null && (isVoiceEligible || !q.isVoiceType)) {
-                        return@withContext Pair(q, true)
+                        return@withContext PickedQuestion(q, fromWrongBook = true)
                     }
                 }
 
                 // 若无错题或按概率走全库抽取未答对题（若环境不具备语音能力则严格过滤为选择题）
                 val randomQ = questionDao.getRandomQuestionForLock(onlyChoice = !isVoiceEligible)
-                Pair(randomQ, false)
+                PickedQuestion(randomQ, fromWrongBook = false)
             }
 
-            val targetQ = question.first
-            val isFromWrongBook = question.second
+            val targetQ = picked.question
 
             if (targetQ == null) {
                 L.w("No question available in database!")
@@ -392,16 +560,133 @@ class QuestionOverlayView @JvmOverloads constructor(
             }
 
             currentQuestion = targetQ
+            currentIsPractice = picked.practice
             questionStartTime = System.currentTimeMillis()
 
-            bindQuestionToUi(targetQ, isFromWrongBook)
+            // 初始化本题作答次数（非练习模式下可从持久化进度恢复；且至少保留 1 次机会）
+            val maxAttempts = preferenceManager.maxAttemptsFor(targetQ.questionType)
+            attemptsUsed = if (!picked.practice) {
+                penaltyManager.attemptsUsed(targetQ.id).coerceIn(0, maxAttempts - 1)
+            } else {
+                0
+            }
+
+            bindQuestionToUi(targetQ, picked.fromWrongBook, picked.restored)
         }
+    }
+
+    /** 当前题剩余作答机会 */
+    private fun attemptsLeft(question: Question): Int {
+        return (preferenceManager.maxAttemptsFor(question.questionType) - attemptsUsed).coerceAtLeast(0)
+    }
+
+    /** 刷新题目来源标签 + 剩余机会提示 */
+    private fun updateProgressLabel(question: Question) {
+        val left = attemptsLeft(question)
+        tvQuestionProgress.text = "$progressBaseLabel · 本题还有 $left 次机会"
+    }
+
+    /**
+     * 登记一次答错/未匹配。返回 true 表示还有剩余机会可重答；false 表示机会已用完。
+     */
+    private fun registerWrongAttempt(question: Question): Boolean {
+        attemptsUsed++
+        if (!currentIsPractice) {
+            penaltyManager.saveAttempts(question.id, attemptsUsed)
+        }
+        return attemptsLeft(question) > 0
+    }
+
+    /**
+     * 作答机会用完后的处理：清除作答进度，并按配置开启惩罚锁定（同步落盘）。
+     * @return 是否已开启惩罚锁定（练习模式或时长为 0 时不惩罚）
+     */
+    private fun onAttemptsExhausted(): Boolean {
+        val minutes = preferenceManager.penaltyLockMinutes
+        val penalize = !currentIsPractice && minutes > 0
+        if (penalize) {
+            penaltyManager.start(minutes * 60_000L)
+        }
+        if (!currentIsPractice) {
+            penaltyManager.clearAttempts()
+        }
+        return penalize
+    }
+
+    /**
+     * 答对后清除作答进度
+     */
+    private fun onAnsweredCorrectly() {
+        attemptsUsed = 0
+        if (!currentIsPractice) {
+            penaltyManager.clearAttempts()
+        }
+    }
+
+    // ======================= 惩罚等待面板 =======================
+
+    /**
+     * 显示惩罚等待面板并启动倒计时
+     * @param keepQuestionVisible true: 保留刚答错的题目与解析（现场进入惩罚）；false: 隐藏题目卡片（重启/亮屏后恢复）
+     */
+    private fun showPenaltyPanel(keepQuestionVisible: Boolean) {
+        isInPenalty = true
+        isSubmitting = true
+        countdownNextJob?.cancel()
+        penaltyJob?.cancel()
+
+        if (isVoiceRecording) {
+            audioRecorder.stopRecording()
+            isVoiceRecording = false
+        }
+
+        cardQuestion.visibility = if (keepQuestionVisible) View.VISIBLE else View.GONE
+        layoutSuccess.visibility = View.GONE
+        if (!keepQuestionVisible) layoutExplanation.visibility = View.GONE
+        tvCountdownNotice.visibility = View.GONE
+        btnVoiceRecord.isEnabled = false
+        layoutPenalty.visibility = View.VISIBLE
+
+        penaltyJob = viewScope.launch {
+            // 每秒轮询真实时间，天然兼容开机后 NTP 校时导致的时间跳变
+            while (true) {
+                val status = penaltyManager.status()
+                if (!status.active) break
+
+                tvPenaltyCountdown.text = formatMmSs(status.remainingSeconds)
+                tvPenaltyHint.text = if (status.clockUnsynced) {
+                    "正在等待系统时间校准，请确保电视已联网..."
+                } else {
+                    "倒计时结束后将自动出新题，答对即可解锁电视"
+                }
+                delay(1000L)
+            }
+            onPenaltyFinished()
+        }
+    }
+
+    private fun onPenaltyFinished() {
+        L.i("Penalty finished, loading a new question.")
+        penaltyManager.clearAll()
+        layoutPenalty.visibility = View.GONE
+        layoutExplanation.visibility = View.GONE
+        cardQuestion.visibility = View.VISIBLE
+        currentQuestion = null
+        loadNextQuestion()
+    }
+
+    private fun formatMmSs(totalSeconds: Long): String {
+        val s = totalSeconds.coerceAtLeast(0L)
+        val h = s / 3600
+        val m = (s % 3600) / 60
+        val sec = s % 60
+        return if (h > 0) String.format("%d:%02d:%02d", h, m, sec) else String.format("%02d:%02d", m, sec)
     }
 
     /**
      * 将题目数据渲染到界面视图
      */
-    private fun bindQuestionToUi(question: Question, isFromWrongBook: Boolean) {
+    private fun bindQuestionToUi(question: Question, isFromWrongBook: Boolean, isRestored: Boolean = false) {
         // 科目标签（采用 Apple 语义化活力色彩）
         tvSubjectBadge.text = question.subject
         val badgeColor = when (question.subject) {
@@ -413,7 +698,12 @@ class QuestionOverlayView @JvmOverloads constructor(
         }
         tvSubjectBadge.background?.setTint(badgeColor)
 
-        tvQuestionProgress.text = if (isFromWrongBook) "错题重练巩固" else "防沉迷随机抽题"
+        progressBaseLabel = when {
+            isRestored -> "继续作答"
+            isFromWrongBook -> "错题重练巩固"
+            else -> "防沉迷随机抽题"
+        }
+        updateProgressLabel(question)
         tvQuestionText.text = question.questionText
 
         if (question.isVoiceType) {
@@ -438,7 +728,6 @@ class QuestionOverlayView @JvmOverloads constructor(
             }
 
             // 重置语音交互状态
-            remainingRetries = preferenceManager.voiceRetryCount
             resetVoiceUi()
 
             // 焦点自动定位于语音录制主按钮
@@ -554,7 +843,10 @@ class QuestionOverlayView @JvmOverloads constructor(
         btnOptionD.isEnabled = true
 
         layoutExplanation.visibility = View.GONE
+        tvExplanation.visibility = View.VISIBLE
+        tvCountdownNotice.visibility = View.VISIBLE
         layoutSuccess.visibility = View.GONE
+        btnVoiceRecord.isEnabled = true
     }
 
     /**
@@ -679,22 +971,56 @@ class QuestionOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * 语音未匹配/未听清处理（支持 2 次重试机制）
+     * 语音未匹配/未听清处理（按题型配置的总作答次数，用完则判错并进入惩罚）
      */
     private fun handleVoiceMismatch(question: Question, recognizedText: String?) {
-        if (remainingRetries > 0) {
-            remainingRetries--
+        val canRetry = registerWrongAttempt(question)
+        if (canRetry) {
+            val left = attemptsLeft(question)
+            updateProgressLabel(question)
             tvVoiceStatus.text = getVoicePromptText()
             val hint = if (recognizedText != null) {
-                "识别为“$recognizedText”，不对哦，再大声试一次！（还可试 ${remainingRetries + 1} 次）"
+                "识别为“$recognizedText”，不对哦，再大声试一次！（还可试 $left 次）"
             } else {
-                "没听清，请对准遥控器话筒大声再说一次！（还可试 ${remainingRetries + 1} 次）"
+                "没听清，请对准遥控器话筒大声再说一次！（还可试 $left 次）"
             }
             tvVoiceResult.text = hint
-            L.i("Voice retry granted, remaining attempts: $remainingRetries")
+            L.i("Voice retry granted, remaining attempts: $left")
+            // 每次未匹配都留一条流水，家长看板可见作答过程（错题本仅在最终判错时累计）
+            recordAttemptAsync(question, recognizedText ?: "未识别", isCorrect = false, addToWrongBook = false)
         } else {
-            L.i("Voice retries exhausted, marking as wrong.")
+            L.i("Voice attempts exhausted, marking as wrong.")
             handleVoiceWrongAnswer(question, recognizedText)
+        }
+    }
+
+    /**
+     * 异步写入单次作答流水，并按需更新题目/错题本状态
+     */
+    private fun recordAttemptAsync(
+        question: Question,
+        answer: String,
+        isCorrect: Boolean,
+        addToWrongBook: Boolean,
+        wrongBookAnswer: String = answer
+    ) {
+        val timeSpentSeconds = ((System.currentTimeMillis() - questionStartTime) / 1000L).toInt().coerceAtLeast(1)
+        viewScope.launch(Dispatchers.IO) {
+            answerRecordDao.insert(
+                AnswerRecord(
+                    questionId = question.id,
+                    selectedAnswer = answer,
+                    isCorrect = if (isCorrect) 1 else 0,
+                    answerTime = System.currentTimeMillis(),
+                    timeSpentSeconds = timeSpentSeconds
+                )
+            )
+            if (isCorrect) {
+                questionDao.markAnsweredCorrectly(question.id)
+                wrongQuestionDao.markAsMastered(question.id)
+            } else if (addToWrongBook) {
+                wrongQuestionDao.recordWrongAnswer(question.id, wrongBookAnswer)
+            }
         }
     }
 
@@ -704,20 +1030,9 @@ class QuestionOverlayView @JvmOverloads constructor(
     private fun handleVoiceCorrectAnswer(question: Question, spokenText: String) {
         if (isSubmitting) return
         isSubmitting = true
+        onAnsweredCorrectly()
 
-        val timeSpentSeconds = ((System.currentTimeMillis() - questionStartTime) / 1000L).toInt().coerceAtLeast(1)
-        viewScope.launch(Dispatchers.IO) {
-            val record = AnswerRecord(
-                questionId = question.id,
-                selectedAnswer = spokenText,
-                isCorrect = 1,
-                answerTime = System.currentTimeMillis(),
-                timeSpentSeconds = timeSpentSeconds
-            )
-            answerRecordDao.insert(record)
-            questionDao.markAnsweredCorrectly(question.id)
-            wrongQuestionDao.markAsMastered(question.id)
-        }
+        recordAttemptAsync(question, spokenText, isCorrect = true, addToWrongBook = false)
 
         btnVoiceRecord.setBackgroundResource(R.drawable.bg_option_btn_correct)
         layoutSuccess.visibility = View.VISIBLE
@@ -730,34 +1045,50 @@ class QuestionOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * 语音答错处理
+     * 语音答错处理（作答机会已用完）
      */
     private fun handleVoiceWrongAnswer(question: Question, spokenText: String?) {
         if (isSubmitting) return
         isSubmitting = true
 
-        val timeSpentSeconds = ((System.currentTimeMillis() - questionStartTime) / 1000L).toInt().coerceAtLeast(1)
-        viewScope.launch(Dispatchers.IO) {
-            val record = AnswerRecord(
-                questionId = question.id,
-                selectedAnswer = spokenText ?: "未识别",
-                isCorrect = 0,
-                answerTime = System.currentTimeMillis(),
-                timeSpentSeconds = timeSpentSeconds
-            )
-            answerRecordDao.insert(record)
-            wrongQuestionDao.recordWrongAnswer(question.id, spokenText ?: "语音未识别")
-        }
+        recordAttemptAsync(
+            question,
+            answer = spokenText ?: "未识别",
+            isCorrect = false,
+            addToWrongBook = true,
+            wrongBookAnswer = spokenText ?: "语音未识别"
+        )
 
         btnVoiceRecord.setBackgroundResource(R.drawable.bg_option_btn_wrong)
         tvFeedbackTitle.text = "❌ 回答错误！正确答案是：${question.correctAnswer}"
         tvExplanation.text = question.explanation ?: "标准答案为：${question.correctAnswer}"
+        tvExplanation.visibility = View.VISIBLE
 
         layoutExplanation.visibility = View.VISIBLE
         layoutSuccess.visibility = View.GONE
 
+        finishWithWrongAnswer()
+    }
+
+    /**
+     * 作答机会用完后的统一收尾：先同步落盘惩罚状态，再更新界面
+     */
+    private fun finishWithWrongAnswer() {
+        val penalized = onAttemptsExhausted()
         answerResultListener?.onAnswerWrong()
 
+        if (penalized) {
+            showPenaltyPanel(keepQuestionVisible = true)
+        } else {
+            startNextQuestionCountdown()
+        }
+    }
+
+    /**
+     * 未开启惩罚锁定（或练习模式）时：3 秒后自动载入下一题
+     */
+    private fun startNextQuestionCountdown() {
+        tvCountdownNotice.visibility = View.VISIBLE
         countdownNextJob = viewScope.launch {
             for (sec in 3 downTo 1) {
                 tvCountdownNotice.text = "$sec 秒后自动载入下一题..."
@@ -771,50 +1102,62 @@ class QuestionOverlayView @JvmOverloads constructor(
      * 处理提交答案
      */
     private fun handleAnswerSubmission(selectedOption: String) {
-        if (isSubmitting) return
+        if (isSubmitting || isInPenalty) return
         val question = currentQuestion ?: return
-        isSubmitting = true
 
-        // 禁用选项避免重复连点
+        val isCorrect = selectedOption.equals(question.correctAnswer, ignoreCase = true)
+        L.i("User submitted option $selectedOption for question #${question.id}, correct: $isCorrect, attemptsUsed: $attemptsUsed")
+
+        if (isCorrect) {
+            isSubmitting = true
+            disableAllOptions()
+            onAnsweredCorrectly()
+            recordAttemptAsync(question, selectedOption, isCorrect = true, addToWrongBook = false)
+            handleCorrectAnswerUi(selectedOption)
+            return
+        }
+
+        // 答错：登记一次，判断是否还有机会
+        val canRetry = registerWrongAttempt(question)
+        if (canRetry) {
+            recordAttemptAsync(question, selectedOption, isCorrect = false, addToWrongBook = false)
+            handleRetryChoiceUi(selectedOption, question)
+        } else {
+            isSubmitting = true
+            disableAllOptions()
+            recordAttemptAsync(question, selectedOption, isCorrect = false, addToWrongBook = true)
+            handleWrongAnswerUi(selectedOption, question)
+        }
+    }
+
+    private fun disableAllOptions() {
         btnOptionA.isEnabled = false
         btnOptionB.isEnabled = false
         btnOptionC.isEnabled = false
         btnOptionD.isEnabled = false
+    }
 
-        val timeSpentSeconds = ((System.currentTimeMillis() - questionStartTime) / 1000L).toInt().coerceAtLeast(1)
-        val isCorrect = selectedOption.equals(question.correctAnswer, ignoreCase = true)
-
-        L.i("User submitted option $selectedOption for question #${question.id}, correct: $isCorrect, timeSpent: ${timeSpentSeconds}s")
-
-        // 1. 异步写入 SQLite 数据库（记录流水、更新错题本与掌握状态）
-        viewScope.launch(Dispatchers.IO) {
-            // 写入流水日志
-            val record = AnswerRecord(
-                questionId = question.id,
-                selectedAnswer = selectedOption,
-                isCorrect = if (isCorrect) 1 else 0,
-                answerTime = System.currentTimeMillis(),
-                timeSpentSeconds = timeSpentSeconds
-            )
-            answerRecordDao.insert(record)
-
-            if (isCorrect) {
-                // 标记题目已答对
-                questionDao.markAnsweredCorrectly(question.id)
-                // 若在错题本中，标记为已攻克
-                wrongQuestionDao.markAsMastered(question.id)
-            } else {
-                // 记录或累加至错题本
-                wrongQuestionDao.recordWrongAnswer(question.id, selectedOption)
-            }
+    /**
+     * 选择题答错但仍有机会：选错项置灰禁用，不透露正确答案与解析
+     */
+    private fun handleRetryChoiceUi(selectedOption: String, question: Question) {
+        getButtonByOption(selectedOption)?.apply {
+            setBackgroundResource(R.drawable.bg_option_btn_wrong)
+            isEnabled = false
         }
 
-        // 2. 界面状态与遥控器反馈
-        if (isCorrect) {
-            handleCorrectAnswerUi(selectedOption)
-        } else {
-            handleWrongAnswerUi(selectedOption, question)
-        }
+        val left = attemptsLeft(question)
+        updateProgressLabel(question)
+        tvFeedbackTitle.text = "❌ 答错了，还剩 $left 次机会，再想一想"
+        tvExplanation.visibility = View.GONE
+        tvCountdownNotice.visibility = View.GONE
+        layoutExplanation.visibility = View.VISIBLE
+        layoutSuccess.visibility = View.GONE
+
+        // 选项被禁用后焦点会丢失，转移到第一个仍可作答的选项
+        listOf(btnOptionA, btnOptionB, btnOptionC, btnOptionD)
+            .firstOrNull { it.isEnabled }
+            ?.let { FocusHelper.requestFocusSafe(it) }
     }
 
     /**
@@ -834,7 +1177,7 @@ class QuestionOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * 答错处理
+     * 答错处理（作答机会已用完）
      */
     private fun handleWrongAnswerUi(selectedOption: String, question: Question) {
         // 用户选错的标红，正确选项标绿
@@ -843,20 +1186,12 @@ class QuestionOverlayView @JvmOverloads constructor(
 
         tvFeedbackTitle.text = "❌ 回答错误！正确答案是 ${question.correctAnswer}"
         tvExplanation.text = question.explanation ?: "暂无详细解析"
+        tvExplanation.visibility = View.VISIBLE
 
         layoutExplanation.visibility = View.VISIBLE
         layoutSuccess.visibility = View.GONE
 
-        answerResultListener?.onAnswerWrong()
-
-        // 倒计时 3 秒后刷新下一道题目
-        countdownNextJob = viewScope.launch {
-            for (sec in 3 downTo 1) {
-                tvCountdownNotice.text = "$sec 秒后自动载入下一题..."
-                delay(1000L)
-            }
-            loadNextQuestion()
-        }
+        finishWithWrongAnswer()
     }
 
     private fun getButtonByOption(option: String): View? {

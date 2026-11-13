@@ -19,6 +19,7 @@ import com.parent.tvlock.R
 import com.parent.tvlock.overlay.OverlayLockManager
 import com.parent.tvlock.util.DateTimeUtils
 import com.parent.tvlock.util.L
+import com.parent.tvlock.util.PenaltyManager
 import com.parent.tvlock.util.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -140,6 +141,7 @@ class LockForegroundService : Service() {
                 isTemporarilyPaused = true
                 preferenceManager.lockTargetTimestamp = 0L
                 preferenceManager.isLocked = false
+                PenaltyManager.getInstance(this).clearAll()
                 overlayLockManager.dismissLock()
                 countdownJob?.cancel()
                 remainingSeconds = -1L
@@ -150,6 +152,7 @@ class LockForegroundService : Service() {
                 L.i("Command received: Reset countdown.")
                 isTemporarilyPaused = false
                 preferenceManager.isLocked = false
+                PenaltyManager.getInstance(this).clearAll()
                 overlayLockManager.dismissLock()
                 resetCountdown()
             }

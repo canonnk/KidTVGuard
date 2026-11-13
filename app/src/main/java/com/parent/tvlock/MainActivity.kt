@@ -76,6 +76,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCurrentBaiduApiKey: TextView
     private lateinit var tvCurrentBaiduSecretKey: TextView
 
+    private lateinit var tvPenaltyMinutesText: TextView
+    private lateinit var tvAttemptsChoiceText: TextView
+    private lateinit var tvAttemptsVoiceText: TextView
+    private lateinit var tvAttemptsFillText: TextView
+
     private lateinit var tvAnswerStatsBrief: TextView
     private lateinit var tvWrongCountBrief: TextView
     private lateinit var tvUsageStatsBrief: TextView
@@ -124,6 +129,7 @@ class MainActivity : AppCompatActivity() {
         refreshDashboardBriefStats()
         tvCurrentServerUrl.text = preferenceManager.syncServerUrl
         refreshVoiceSettingsUi()
+        refreshPenaltySettingsUi()
         if (LockForegroundService.isTemporarilyPaused) {
             tvServiceStatus.text = "防沉迷已暂时关闭（本次有效）"
             tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.ios_orange))
@@ -201,6 +207,11 @@ class MainActivity : AppCompatActivity() {
         tvCurrentBaiduApiKey = findViewById(R.id.tvCurrentBaiduApiKey)
         tvCurrentBaiduSecretKey = findViewById(R.id.tvCurrentBaiduSecretKey)
 
+        tvPenaltyMinutesText = findViewById(R.id.tvPenaltyMinutesText)
+        tvAttemptsChoiceText = findViewById(R.id.tvAttemptsChoiceText)
+        tvAttemptsVoiceText = findViewById(R.id.tvAttemptsVoiceText)
+        tvAttemptsFillText = findViewById(R.id.tvAttemptsFillText)
+
         tvAnswerStatsBrief = findViewById(R.id.tvAnswerStatsBrief)
         tvWrongCountBrief = findViewById(R.id.tvWrongCountBrief)
         tvUsageStatsBrief = findViewById(R.id.tvUsageStatsBrief)
@@ -223,6 +234,10 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.btnSyncQuestions),
             findViewById(R.id.btnConfigServerUrl),
             findViewById(R.id.btnChangePassword),
+            findViewById(R.id.btnPenaltyMinutes),
+            findViewById(R.id.btnAttemptsChoice),
+            findViewById(R.id.btnAttemptsVoice),
+            findViewById(R.id.btnAttemptsFill),
             findViewById(R.id.btnVoiceInteractionMode),
             findViewById(R.id.btnVoiceMaxDuration),
             findViewById(R.id.btnConfigBaiduApiKey),
@@ -237,6 +252,7 @@ class MainActivity : AppCompatActivity() {
         FocusHelper.requestFocusSafe(findViewById(R.id.btnQuickLock))
         updateIntervalSelectionUi()
         refreshVoiceSettingsUi()
+        refreshPenaltySettingsUi()
     }
 
     private fun setupListeners() {
@@ -303,6 +319,18 @@ class MainActivity : AppCompatActivity() {
         // 修改家长密码
         findViewById<View>(R.id.btnChangePassword).setOnClickListener {
             showChangePasswordDialog()
+        }
+
+        // 答错惩罚：锁定时长与各题型可作答次数
+        findViewById<View>(R.id.btnPenaltyMinutes).setOnClickListener { showPenaltyMinutesDialog() }
+        findViewById<View>(R.id.btnAttemptsChoice).setOnClickListener {
+            showAttemptsDialog("选择题可作答次数", preferenceManager.maxAttemptsChoice) { preferenceManager.maxAttemptsChoice = it }
+        }
+        findViewById<View>(R.id.btnAttemptsVoice).setOnClickListener {
+            showAttemptsDialog("语音题可作答次数", preferenceManager.maxAttemptsVoice) { preferenceManager.maxAttemptsVoice = it }
+        }
+        findViewById<View>(R.id.btnAttemptsFill).setOnClickListener {
+            showAttemptsDialog("填空题可作答次数（预留）", preferenceManager.maxAttemptsFill) { preferenceManager.maxAttemptsFill = it }
         }
 
         // 语音认读题：交互手势模式切换
@@ -684,6 +712,48 @@ class MainActivity : AppCompatActivity() {
                     tvCurrentServerUrl.text = newUrl
                     Toast.makeText(this, "接口地址已保存", Toast.LENGTH_SHORT).show()
                 }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun refreshPenaltySettingsUi() {
+        val minutes = preferenceManager.penaltyLockMinutes
+        tvPenaltyMinutesText.text = if (minutes > 0) "$minutes 分钟" else "关闭"
+        tvAttemptsChoiceText.text = "${preferenceManager.maxAttemptsChoice} 次"
+        tvAttemptsVoiceText.text = "${preferenceManager.maxAttemptsVoice} 次"
+        tvAttemptsFillText.text = "${preferenceManager.maxAttemptsFill} 次"
+    }
+
+    private fun showPenaltyMinutesDialog() {
+        val labels = arrayOf("关闭（仅保留重答机会）", "1 分钟", "3 分钟", "5 分钟", "10 分钟", "15 分钟", "30 分钟", "60 分钟")
+        val values = intArrayOf(0, 1, 3, 5, 10, 15, 30, 60)
+        val currentIdx = values.indexOf(preferenceManager.penaltyLockMinutes).coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle("答错次数用完后的锁定时长")
+            .setSingleChoiceItems(labels, currentIdx) { dialog, which ->
+                preferenceManager.penaltyLockMinutes = values[which]
+                refreshPenaltySettingsUi()
+                Toast.makeText(this, if (values[which] > 0) "答错惩罚已设为 ${values[which]} 分钟" else "已关闭答错惩罚锁定", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showAttemptsDialog(title: String, current: Int, onSelected: (Int) -> Unit) {
+        val values = intArrayOf(1, 2, 3, 4, 5, 6, 8, 10)
+        val labels = values.map { "$it 次" }.toTypedArray()
+        val currentIdx = values.indexOf(current).coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(labels, currentIdx) { dialog, which ->
+                onSelected(values[which])
+                refreshPenaltySettingsUi()
+                Toast.makeText(this, "$title 已设为 ${values[which]} 次", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
             }
             .setNegativeButton("取消", null)
             .show()

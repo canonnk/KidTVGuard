@@ -17,10 +17,12 @@ import android.view.accessibility.AccessibilityEvent
 import com.parent.tvlock.db.AppDatabaseHelper
 import com.parent.tvlock.db.dao.AppUsageRecordDao
 import com.parent.tvlock.db.model.AppUsageRecord
+import com.parent.tvlock.overlay.OverlayLockManager
 import com.parent.tvlock.overlay.ParentPasswordOverlayView
 import com.parent.tvlock.util.DateTimeUtils
 import com.parent.tvlock.util.L
 import com.parent.tvlock.util.ParentAuthManager
+import com.parent.tvlock.util.ParentGateTrigger
 import com.parent.tvlock.util.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -106,6 +108,14 @@ class TvAccessibilityService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (preferenceManager.isLocked || isPasswordOverlayShowing) {
             val keyCode = event.keyCode
+            // 锁屏期间连按菜单键 5 次：唤起家长应急入口（按键本身仍被消费）
+            if (preferenceManager.isLocked && keyCode == KeyEvent.KEYCODE_MENU &&
+                event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+                ParentGateTrigger.onMenuDown()
+            ) {
+                OverlayLockManager.getInstance(this).openParentGate()
+                return true
+            }
             if (ESCAPE_KEY_CODES.contains(keyCode)) {
                 L.d("Intercepted escape key event in AccessibilityService: $keyCode")
                 return true // 拦截并消耗按键，防止孩子切出锁屏或绕过拦截

@@ -47,6 +47,7 @@ data class Question(
     companion object {
         const val TYPE_CHOICE = "CHOICE"
         const val TYPE_VOICE = "VOICE"
+        const val TYPE_FILL = "FILL" // 填空题（暂未实现，仅用于预留作答次数配置）
     }
 
     val isVoiceType: Boolean

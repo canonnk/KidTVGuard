@@ -13,6 +13,7 @@ import android.view.View
 import android.view.WindowManager
 import com.parent.tvlock.service.LockForegroundService
 import com.parent.tvlock.util.L
+import com.parent.tvlock.util.PenaltyManager
 import com.parent.tvlock.util.PreferenceManager
 
 /**
@@ -120,10 +121,19 @@ class OverlayLockManager private constructor(private val context: Context) {
     }
 
     /**
+     * 唤起锁屏界面内的家长应急入口（由无障碍服务在连按菜单键时调用，需在主线程）
+     */
+    fun openParentGate() {
+        (currentOverlayView as? QuestionOverlayView)?.showParentGate()
+    }
+
+    /**
      * 关闭并移除锁屏悬浮窗
      */
     @Synchronized
     fun dismissLock() {
+        // 解锁（答对/家长放行）后清除惩罚与作答进度，即使悬浮窗已不在也要清理
+        PenaltyManager.getInstance(context).clearAll()
         if (!isShowingLock && currentOverlayView == null) return
 
         try {
